@@ -29,3 +29,5 @@ BoxMate displays a Linux setup card, copies this option after installing MelonLo
 The Linux binary and archive structure were cross-build validated. Live Steam Deck/Proton interaction still needs hardware testing.
 
 Verify downloads with `SHA256SUMS.txt`.
+
+The downloadable archives contain the complete self-contained runtime output; no separate .NET installation is required.

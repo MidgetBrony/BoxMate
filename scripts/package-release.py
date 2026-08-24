@@ -17,12 +17,16 @@ windows_archive = dist / "BoxMate-windows-x64.zip"
 linux_archive = dist / "BoxMate-linux-x64.tar.gz"
 
 with zipfile.ZipFile(windows_archive, "w", zipfile.ZIP_DEFLATED) as archive:
-    for name in ("BoxMate.exe", "av_libglesv2.dll", "libSkiaSharp.dll"):
-        archive.write(windows_source / name, name)
+    for path in sorted(windows_source.rglob("*")):
+        if path.is_file() and path.suffix.lower() != ".pdb":
+            archive.write(path, path.relative_to(windows_source).as_posix())
 
 with tarfile.open(linux_archive, "w:gz") as archive:
-    for name in ("BoxMate", "libHarfBuzzSharp.so", "libSkiaSharp.so"):
-        data = (linux_source / name).read_bytes()
+    for path in sorted(linux_source.rglob("*")):
+        if not path.is_file() or path.suffix.lower() == ".pdb":
+            continue
+        name = path.relative_to(linux_source).as_posix()
+        data = path.read_bytes()
         info = tarfile.TarInfo(name)
         info.size = len(data)
         info.mode = 0o755 if name == "BoxMate" else 0o644
