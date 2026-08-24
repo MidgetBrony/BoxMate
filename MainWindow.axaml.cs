@@ -1,0 +1,283 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.Input.Platform;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
+using BoxMate.Models;
+using BoxMate.Services;
+
+namespace BoxMate;
+
+public partial class MainWindow : Window
+{
+    private const string OfficialCatalogue = "https://github.com/MidgetBrony/BoxMate-Mods";
+    private readonly SettingsService _settingsService = new();
+    private readonly ManifestService _manifestService = new();
+    private readonly InstallationService _installationService = new();
+    private readonly MelonLoaderService _melonLoaderService = new();
+    private readonly GitHubAuthService _gitHubAuthService = new();
+    private string? _gitHubToken;
+    private BoxMateSettings _settings = new();
+    private IReadOnlyList<ResolvedPackage> _packages = [];
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        Opened += MainWindow_OnOpened;
+    }
+
+    private async void MainWindow_OnOpened(object? sender, EventArgs e)
+    {
+        _settings = await _settingsService.LoadAsync();
+        _gitHubToken = _gitHubAuthService.LoadToken();
+        ApplyGitHubAuthentication();
+        GameFolderBox.Text = _settings.GameFolder;
+        UpdateSourceSummary();
+        UpdateMelonLoaderStatus();
+        UpdateGitHubStatus();
+        LinuxSetupPanel.IsVisible = OperatingSystem.IsLinux();
+        await RefreshManifestsAsync();
+    }
+
+    private async void RefreshButton_OnClick(object? sender, RoutedEventArgs e) => await RefreshManifestsAsync();
+
+    private async void ManageSourcesButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        ReadSettingsFromForm();
+        var dialog = new ManifestSourcesWindow(_settings.ManifestUrls);
+        var sources = await dialog.ShowDialog<List<string>?>(this);
+        if (sources is null) return;
+        _settings.ManifestUrls = sources;
+        await _settingsService.SaveAsync(_settings);
+        UpdateSourceSummary();
+        await RefreshManifestsAsync();
+    }
+
+    private async void ChooseFolderButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var choices = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose your BOXROOM folder", AllowMultiple = false
+        });
+        if (choices.Count > 0)
+        {
+            GameFolderBox.Text = choices[0].Path.LocalPath;
+            UpdateMelonLoaderStatus();
+        }
+    }
+
+    private async void InstallMelonLoaderButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        ReadSettingsFromForm();
+        if (!Directory.Exists(_settings.GameFolder) || !File.Exists(Path.Combine(_settings.GameFolder, "BOXROOM.exe")))
+        {
+            SetStatus("Choose the folder containing BOXROOM.exe first.");
+            return;
+        }
+        await RunBusyAsync(async () =>
+        {
+            var version = await _melonLoaderService.InstallLatestAsync(_settings.GameFolder,
+                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+            UpdateMelonLoaderStatus();
+            RenderPackages();
+            if (OperatingSystem.IsLinux())
+            {
+                var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+                if (clipboard is not null) await clipboard.SetTextAsync(MelonLoaderService.ProtonLaunchOption);
+                SetStatus($"MelonLoader {version} installed. Proton launch option copied; paste it into BOXROOM's Steam properties.");
+            }
+            else SetStatus($"MelonLoader {version} installed. Launch BOXROOM once before installing mods.");
+        });
+    }
+
+    private async void CopyProtonLaunchOptionButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null) { SetStatus("Clipboard is unavailable."); return; }
+        await clipboard.SetTextAsync(MelonLoaderService.ProtonLaunchOption);
+        SetStatus("Copied the Proton launch option. Paste it into Steam > BOXROOM > Properties > Launch Options.");
+    }
+
+    private async void GitHubSignInButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(_gitHubToken))
+        {
+            _gitHubAuthService.SignOut();
+            _gitHubToken = null;
+            ApplyGitHubAuthentication();
+            UpdateGitHubStatus();
+            SetStatus("Signed out of GitHub. Cached anonymous access remains available.");
+            return;
+        }
+
+        await RunBusyAsync(async () =>
+        {
+            _gitHubToken = await _gitHubAuthService.SignInAsync(prompt =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    ToolTip.SetTip(GitHubSignInButton, $"Enter code {prompt.UserCode} in the browser");
+                    SetStatus($"GitHub code {prompt.UserCode} copied. Complete sign-in in your browser.");
+                    var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+                    if (clipboard is not null) _ = clipboard.SetTextAsync(prompt.UserCode);
+                });
+            });
+            ApplyGitHubAuthentication();
+            UpdateGitHubStatus();
+            SetStatus("Signed in to GitHub. Release lookup limit is now 5,000 per hour.");
+            await RefreshManifestsAsync();
+        });
+    }
+
+    private async void InstallButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string packageId }) return;
+        ReadSettingsFromForm();
+        if (!ValidateGameFolder(_settings.GameFolder))
+        {
+            SetStatus("Choose a valid BOXROOM folder before installing.");
+            return;
+        }
+        await RunBusyAsync(async () =>
+        {
+            var needsMelonLoader = _packages.Any(package => !string.IsNullOrWhiteSpace(package.Manifest.Requirements.MelonLoader));
+            if (needsMelonLoader && !_melonLoaderService.IsInstalled(_settings.GameFolder))
+            {
+                SetStatus("Installing required MelonLoader...");
+                await _melonLoaderService.InstallLatestAsync(_settings.GameFolder,
+                    message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+                UpdateMelonLoaderStatus();
+            }
+            SetStatus("Resolving required mods...");
+            var installed = await _installationService.InstallPackageAsync(
+                _packages, packageId, _settings.GameFolder,
+                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+            SetStatus(installed.Count == 0 ? "Everything is already current." : $"Installed {string.Join(", ", installed)}.");
+            RenderPackages();
+        });
+    }
+
+    private async Task RefreshManifestsAsync()
+    {
+        ReadSettingsFromForm();
+        await RunBusyAsync(async () =>
+        {
+            var sources = new[] { OfficialCatalogue }.Concat(_settings.ManifestUrls);
+            _packages = await _manifestService.ResolveAllAsync(sources,
+                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+            await _settingsService.SaveAsync(_settings);
+            RenderPackages();
+            SetStatus("Manifests and GitHub releases refreshed.");
+        });
+    }
+
+    private void RenderPackages()
+    {
+        var validRoot = ValidateGameFolder(_settings.GameFolder);
+        bool IsSubscribed(ResolvedPackage package) => _settings.ManifestUrls.Any(source =>
+            source.Equals(package.ManifestUrl, StringComparison.OrdinalIgnoreCase) ||
+            source.TrimEnd('/').Equals(package.Manifest.Repository.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
+        var cards = _packages.OrderBy(package => package.IsCatalogueEntry || IsSubscribed(package) ? 0 : 1)
+            .ThenBy(package => package.Manifest.Name)
+            .Select(package => PackageCard.From(package, IsSubscribed(package), validRoot
+                ? _installationService.GetPackageStatus(package, _settings.GameFolder)
+                : PackageInstallStatus.NotConfigured)).ToList();
+        PackageList.ItemsSource = cards;
+        ManifestSummaryText.Text = $"{cards.Count} mod{(cards.Count == 1 ? string.Empty : "s")}, including required dependencies";
+    }
+
+    private async Task RunBusyAsync(Func<Task> work)
+    {
+        BusyProgress.IsVisible = true;
+        RefreshButton.IsEnabled = false;
+        try { await work(); }
+        catch (Exception ex) { SetStatus($"Error: {ex.Message}"); }
+        finally { BusyProgress.IsVisible = false; RefreshButton.IsEnabled = true; }
+    }
+
+    private void ReadSettingsFromForm()
+    {
+        _settings.GameFolder = GameFolderBox.Text?.Trim() ?? string.Empty;
+    }
+
+    private void UpdateSourceSummary()
+    {
+        SourceSummaryText.Text = _settings.ManifestUrls.Count switch
+        {
+            0 => "Official catalogue",
+            1 => "Official catalogue + 1 repository",
+            _ => $"Official catalogue + {_settings.ManifestUrls.Count} repositories"
+        };
+    }
+
+    private void UpdateMelonLoaderStatus()
+    {
+        var root = GameFolderBox.Text?.Trim() ?? string.Empty;
+        MelonLoaderStatusText.Text = _melonLoaderService.IsInstalled(root) ? "MelonLoader is installed" : "MelonLoader is not installed";
+    }
+
+    private void ApplyGitHubAuthentication()
+    {
+        ManifestService.SetGitHubToken(_gitHubToken);
+        MelonLoaderService.SetGitHubToken(_gitHubToken);
+    }
+
+    private void UpdateGitHubStatus()
+    {
+        var signedIn = !string.IsNullOrWhiteSpace(_gitHubToken);
+        GitHubIconPath.Fill = new SolidColorBrush(Color.Parse(signedIn ? "#70D6B2" : "#687386"));
+        ToolTip.SetTip(GitHubSignInButton, signedIn ? "GitHub signed in — click to sign out" : "Sign in with GitHub");
+    }
+
+    private static bool ValidateGameFolder(string path) => Directory.Exists(path) &&
+        (File.Exists(Path.Combine(path, "BOXROOM.exe")) || Directory.Exists(Path.Combine(path, "MelonLoader")));
+    private void SetStatus(string message) => StatusText.Text = message;
+}
+
+public sealed class PackageCard
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Description { get; init; }
+    public required string VersionLabel { get; init; }
+    public required string RequirementsLabel { get; init; }
+    public required string DependencyLabel { get; init; }
+    public required string SourceLabel { get; init; }
+    public required string Status { get; init; }
+    public required string ActionLabel { get; init; }
+    public bool CanInstall { get; init; }
+
+    public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status)
+    {
+        var manifest = package.Manifest;
+        var requirements = new List<string>();
+        if (!string.IsNullOrWhiteSpace(manifest.Requirements.MelonLoader)) requirements.Add($"MelonLoader {manifest.Requirements.MelonLoader}+");
+        if (!string.IsNullOrWhiteSpace(manifest.Requirements.GameVersion)) requirements.Add($"BOXROOM {manifest.Requirements.GameVersion}");
+        return new PackageCard
+        {
+            Id = manifest.Id,
+            Name = manifest.Name,
+            Description = manifest.Description,
+            VersionLabel = $"v{package.Version}",
+            RequirementsLabel = requirements.Count == 0 ? "No declared runtime requirements" : "Runtime: " + string.Join(" · ", requirements),
+            DependencyLabel = manifest.Dependencies.Count(item => item.Required) == 0 ? "No required mods" : $"Requires {manifest.Dependencies.Count(item => item.Required)} other mod(s)",
+            SourceLabel = subscribed ? $"Added repository · {manifest.Author}" :
+                package.IsCatalogueEntry ? $"Official catalogue · {manifest.Author}" : $"Required dependency · {manifest.Author}",
+            Status = status switch
+            {
+                PackageInstallStatus.Current => "Installed and current",
+                PackageInstallStatus.Outdated => "Update available",
+                PackageInstallStatus.Modified => "Installed files are missing",
+                PackageInstallStatus.NotConfigured => "Choose your BOXROOM folder",
+                _ => "Not installed"
+            },
+            ActionLabel = status == PackageInstallStatus.Current ? "Installed" : status == PackageInstallStatus.Outdated ? "Update" : "Install",
+            CanInstall = status is not (PackageInstallStatus.Current or PackageInstallStatus.NotConfigured)
+        };
+    }
+}

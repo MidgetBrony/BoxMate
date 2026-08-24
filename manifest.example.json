@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "boxroom-plus",
+  "name": "BOXROOM Plus",
+  "author": "MidgetBrony",
+  "description": "Core framework and extensions for BOXROOM mods.",
+  "repository": "https://github.com/MidgetBrony/Boxroom-Plus",
+  "requirements": {
+    "melonLoader": "0.7.0"
+  },
+  "dependencies": [
+    {
+      "manifest": "https://raw.githubusercontent.com/OWNER/REQUIRED-MOD/main/manifest.json",
+      "minimumVersion": "1.0.0",
+      "required": true
+    }
+  ],
+  "release": {
+    "provider": "github",
+    "asset": "Boxroom-Plus.zip",
+    "checksumAsset": "SHA256SUMS.txt"
+  }
+}
