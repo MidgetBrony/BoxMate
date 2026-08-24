@@ -19,13 +19,14 @@ namespace BoxMate.Services;
 public sealed class ManifestService
 {
     private static readonly HttpClient Client = CreateClient();
+    private static string? GitHubToken;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public static void SetGitHubToken(string? token) => Client.DefaultRequestHeaders.Authorization =
-        string.IsNullOrWhiteSpace(token) ? null : new AuthenticationHeaderValue("Bearer", token);
+    public static void SetGitHubToken(string? token) => GitHubToken =
+        string.IsNullOrWhiteSpace(token) ? null : token;
 
     public async Task<IReadOnlyList<ResolvedPackage>> ResolveAllAsync(
         IEnumerable<string> roots, Action<string> progress, CancellationToken cancellationToken = default)
@@ -182,6 +183,8 @@ public sealed class ManifestService
             return cached.Release;
 
         using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
+        if (!string.IsNullOrWhiteSpace(GitHubToken))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
         if (!string.IsNullOrWhiteSpace(cached?.ETag)) request.Headers.TryAddWithoutValidation("If-None-Match", cached.ETag);
         using var response = await Client.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotModified && cached is not null)

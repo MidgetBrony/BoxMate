@@ -19,9 +19,10 @@ public sealed class MelonLoaderService
     private const string ReleasesApi = "https://api.github.com/repos/LavaGang/MelonLoader/releases/latest";
     private const string WindowsAsset = "MelonLoader.x64.zip";
     private static readonly HttpClient Client = CreateClient();
+    private static string? GitHubToken;
 
-    public static void SetGitHubToken(string? token) => Client.DefaultRequestHeaders.Authorization =
-        string.IsNullOrWhiteSpace(token) ? null : new AuthenticationHeaderValue("Bearer", token);
+    public static void SetGitHubToken(string? token) => GitHubToken =
+        string.IsNullOrWhiteSpace(token) ? null : token;
 
     public bool IsInstalled(string gameRoot) =>
         Directory.Exists(Path.Combine(gameRoot, "MelonLoader")) && File.Exists(Path.Combine(gameRoot, "version.dll"));
@@ -32,7 +33,10 @@ public sealed class MelonLoaderService
             throw new InvalidOperationException("Close BOXROOM before installing or updating MelonLoader.");
 
         progress("Finding the latest official MelonLoader release...");
-        using var releaseResponse = await Client.GetAsync(ReleasesApi, cancellationToken);
+        using var releaseRequest = new HttpRequestMessage(HttpMethod.Get, ReleasesApi);
+        if (!string.IsNullOrWhiteSpace(GitHubToken))
+            releaseRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
+        using var releaseResponse = await Client.SendAsync(releaseRequest, cancellationToken);
         releaseResponse.EnsureSuccessStatusCode();
         await using var releaseStream = await releaseResponse.Content.ReadAsStreamAsync(cancellationToken);
         var release = await JsonSerializer.DeserializeAsync<GitHubRelease>(releaseStream, cancellationToken: cancellationToken)
