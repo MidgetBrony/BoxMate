@@ -88,6 +88,12 @@ BoxMate rejects absolute paths, traversal outside BOXROOM, unexpected root folde
 
 Installed state is recorded in `UserData/BoxMate/installed.json`.
 
+Installed mod cards include an **Uninstall** action. BoxMate removes only the files recorded for that package, preserves files shared with another installed package, and refuses to remove a dependency while another installed mod still requires it. MelonLoader is managed separately and is never removed as part of uninstalling a mod.
+
+## BoxMate updates
+
+BoxMate checks its own latest GitHub release at startup. When a newer version is available, **Update BoxMate** appears in the header. The updater downloads the correct complete Windows or Linux runtime archive, verifies its SHA-256 checksum, stages the replacement outside the application folder, restarts through the staged copy, and relaunches the updated installation.
+
 ## Collection manifests
 
 A collection is a catalogue and has no downloadable release of its own. BoxMate expands each repository into a normal mod card and still resolves the mod's required dependencies:

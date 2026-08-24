@@ -48,6 +48,46 @@ public sealed class InstallationService
         return completed;
     }
 
+    public Task<string> UninstallPackageAsync(
+        IReadOnlyList<ResolvedPackage> packages, string packageId, string gameRoot,
+        Action<string> progress, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var state = LoadState(gameRoot);
+        var installed = state.Packages.FirstOrDefault(item => item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("That mod is not recorded as installed by BoxMate.");
+        var target = packages.FirstOrDefault(item => item.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+        if (target is not null)
+        {
+            var installedIds = state.Packages.Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var dependant = packages.FirstOrDefault(package =>
+                !package.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase) &&
+                installedIds.Contains(package.Manifest.Id) &&
+                package.Manifest.Dependencies.Where(item => item.Required).Any(dependency =>
+                    packages.FirstOrDefault(candidate => candidate.ManifestUrl.Equals(
+                        new Uri(dependency.Manifest).AbsoluteUri, StringComparison.OrdinalIgnoreCase))?.Manifest.Id
+                        .Equals(packageId, StringComparison.OrdinalIgnoreCase) == true));
+            if (dependant is not null)
+                throw new InvalidOperationException($"{installed.Name} is required by installed mod {dependant.Manifest.Name}. Uninstall that mod first.");
+        }
+
+        progress($"Uninstalling {installed.Name}...");
+        var sharedFiles = state.Packages.Where(item => !item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(item => item.Files).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var relative in installed.Files.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (sharedFiles.Contains(relative)) continue;
+            var path = GetSafeDestination(gameRoot, relative);
+            if (File.Exists(path)) File.Delete(path);
+            RemoveEmptyParents(gameRoot, path);
+        }
+
+        state.Packages.RemoveAll(item => item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+        SaveState(state, gameRoot);
+        return Task.FromResult(installed.Name);
+    }
+
     private static List<ResolvedPackage> ResolveInstallOrder(IReadOnlyList<ResolvedPackage> packages, ResolvedPackage requested)
     {
         var byUrl = packages.ToDictionary(item => item.ManifestUrl, StringComparer.OrdinalIgnoreCase);
@@ -197,11 +237,33 @@ public sealed class InstallationService
             Id = package.Manifest.Id, Name = package.Manifest.Name, Version = package.Version,
             ManifestUrl = package.ManifestUrl, AssetSha256 = package.Sha256, Files = files.ToList()
         });
+        SaveState(state, gameRoot);
+    }
+
+    private static void SaveState(InstalledState state, string gameRoot)
+    {
         var path = GetStatePath(gameRoot);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(temporary, path, true);
+    }
+
+    private static void RemoveEmptyParents(string gameRoot, string filePath)
+    {
+        var root = Path.GetFullPath(gameRoot).TrimEnd(Path.DirectorySeparatorChar);
+        var protectedRoots = AllowedRoots.Select(name => Path.Combine(root, name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var directory = Path.GetDirectoryName(filePath);
+        while (!string.IsNullOrWhiteSpace(directory) &&
+               !directory.Equals(root, StringComparison.OrdinalIgnoreCase) &&
+               !protectedRoots.Contains(directory) &&
+               directory.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Directory.Exists(directory) || Directory.EnumerateFileSystemEntries(directory).Any()) break;
+            Directory.Delete(directory);
+            directory = Path.GetDirectoryName(directory);
+        }
     }
 
     private static string GetStatePath(string gameRoot) => Path.Combine(gameRoot, "UserData", "BoxMate", "installed.json");

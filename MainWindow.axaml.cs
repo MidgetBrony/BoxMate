@@ -21,7 +21,9 @@ public partial class MainWindow : Window
     private readonly InstallationService _installationService = new();
     private readonly MelonLoaderService _melonLoaderService = new();
     private readonly GitHubAuthService _gitHubAuthService = new();
+    private readonly SelfUpdateService _selfUpdateService = new();
     private string? _gitHubToken;
+    private BoxMateUpdate? _availableUpdate;
     private BoxMateSettings _settings = new();
     private IReadOnlyList<ResolvedPackage> _packages = [];
 
@@ -42,6 +44,7 @@ public partial class MainWindow : Window
         UpdateGitHubStatus();
         LinuxSetupPanel.IsVisible = OperatingSystem.IsLinux();
         await RefreshManifestsAsync();
+        await CheckForBoxMateUpdateAsync();
     }
 
     private async void RefreshButton_OnClick(object? sender, RoutedEventArgs e) => await RefreshManifestsAsync();
@@ -162,6 +165,35 @@ public partial class MainWindow : Window
         });
     }
 
+    private async void UninstallButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string packageId }) return;
+        var package = _packages.FirstOrDefault(item => item.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+        if (package is null || !await ConfirmAsync("Uninstall mod?",
+                $"Remove {package.Manifest.Name} from BOXROOM? Only files recorded by BoxMate will be removed.")) return;
+        ReadSettingsFromForm();
+        await RunBusyAsync(async () =>
+        {
+            var removed = await _installationService.UninstallPackageAsync(_packages, packageId, _settings.GameFolder,
+                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+            SetStatus($"Uninstalled {removed}.");
+            RenderPackages();
+        });
+    }
+
+    private async void UpdateBoxMateButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is null) return;
+        await RunBusyAsync(async () =>
+        {
+            await _selfUpdateService.StartUpdateAsync(_availableUpdate,
+                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+            SetStatus("Update ready. Restarting BoxMate...");
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
+        });
+    }
+
     private async Task RefreshManifestsAsync()
     {
         ReadSettingsFromForm();
@@ -174,6 +206,25 @@ public partial class MainWindow : Window
             RenderPackages();
             SetStatus("Manifests and GitHub releases refreshed.");
         });
+    }
+
+    private async Task CheckForBoxMateUpdateAsync()
+    {
+        try
+        {
+            _availableUpdate = await _selfUpdateService.CheckAsync();
+            UpdateBoxMateButton.IsVisible = _availableUpdate is not null;
+            if (_availableUpdate is not null)
+            {
+                UpdateBoxMateButton.Content = $"Update BoxMate · v{_availableUpdate.Version}";
+                ToolTip.SetTip(UpdateBoxMateButton, "Download, verify, install, and restart BoxMate");
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateBoxMateButton.IsVisible = false;
+            ToolTip.SetTip(UpdateBoxMateButton, $"Update check failed: {ex.Message}");
+        }
     }
 
     private void RenderPackages()
@@ -225,6 +276,7 @@ public partial class MainWindow : Window
     {
         ManifestService.SetGitHubToken(_gitHubToken);
         MelonLoaderService.SetGitHubToken(_gitHubToken);
+        SelfUpdateService.SetGitHubToken(_gitHubToken);
     }
 
     private void UpdateGitHubStatus()
@@ -237,6 +289,35 @@ public partial class MainWindow : Window
     private static bool ValidateGameFolder(string path) => Directory.Exists(path) &&
         (File.Exists(Path.Combine(path, "BOXROOM.exe")) || Directory.Exists(Path.Combine(path, "MelonLoader")));
     private void SetStatus(string message) => StatusText.Text = message;
+
+    private async Task<bool> ConfirmAsync(string title, string message)
+    {
+        var dialog = new Window
+        {
+            Title = title, Width = 440, Height = 190, CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = new SolidColorBrush(Color.Parse("#191E29"))
+        };
+        var cancel = new Button { Content = "Cancel", MinWidth = 90 };
+        var confirm = new Button { Content = "Uninstall", MinWidth = 100 };
+        cancel.Click += (_, _) => dialog.Close(false);
+        confirm.Click += (_, _) => dialog.Close(true);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(22), Spacing = 18,
+            Children =
+            {
+                new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+                new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                    Spacing = 10, Children = { cancel, confirm }
+                }
+            }
+        };
+        return await dialog.ShowDialog<bool>(this);
+    }
 }
 
 public sealed class PackageCard
@@ -251,6 +332,7 @@ public sealed class PackageCard
     public required string Status { get; init; }
     public required string ActionLabel { get; init; }
     public bool CanInstall { get; init; }
+    public bool CanUninstall { get; init; }
 
     public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status)
     {
@@ -276,8 +358,9 @@ public sealed class PackageCard
                 PackageInstallStatus.NotConfigured => "Choose your BOXROOM folder",
                 _ => "Not installed"
             },
-            ActionLabel = status == PackageInstallStatus.Current ? "Installed" : status == PackageInstallStatus.Outdated ? "Update" : "Install",
-            CanInstall = status is not (PackageInstallStatus.Current or PackageInstallStatus.NotConfigured)
+            ActionLabel = status == PackageInstallStatus.Current ? "Installed" : status == PackageInstallStatus.Outdated ? "Update" : status == PackageInstallStatus.Modified ? "Repair" : "Install",
+            CanInstall = status is not (PackageInstallStatus.Current or PackageInstallStatus.NotConfigured),
+            CanUninstall = status is PackageInstallStatus.Current or PackageInstallStatus.Outdated or PackageInstallStatus.Modified
         };
     }
 }
