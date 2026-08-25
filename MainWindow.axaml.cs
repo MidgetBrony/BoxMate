@@ -233,11 +233,14 @@ public partial class MainWindow : Window
         bool IsSubscribed(ResolvedPackage package) => _settings.ManifestUrls.Any(source =>
             source.Equals(package.ManifestUrl, StringComparison.OrdinalIgnoreCase) ||
             source.TrimEnd('/').Equals(package.Manifest.Repository.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
-        var cards = _packages.OrderBy(package => package.IsCatalogueEntry || IsSubscribed(package) ? 0 : 1)
+        var visiblePackages = _packages.Where(package => !package.IsDeprecated ||
+            (validRoot && _installationService.IsRecordedInstalled(package.Manifest.Id, _settings.GameFolder)));
+        var cards = visiblePackages.OrderBy(package => package.IsDeprecated ? 0 : package.IsCatalogueEntry || IsSubscribed(package) ? 1 : 2)
             .ThenBy(package => package.Manifest.Name)
             .Select(package => PackageCard.From(package, IsSubscribed(package), validRoot
                 ? _installationService.GetPackageStatus(package, _settings.GameFolder)
-                : PackageInstallStatus.NotConfigured)).ToList();
+                : PackageInstallStatus.NotConfigured,
+                validRoot ? _installationService.GetRecordedVersion(package.Manifest.Id, _settings.GameFolder) : string.Empty)).ToList();
         PackageList.ItemsSource = cards;
         ManifestSummaryText.Text = $"{cards.Count} mod{(cards.Count == 1 ? string.Empty : "s")}, including required dependencies";
     }
@@ -331,10 +334,15 @@ public sealed class PackageCard
     public required string SourceLabel { get; init; }
     public required string Status { get; init; }
     public required string ActionLabel { get; init; }
+    public required IBrush CardBrush { get; init; }
+    public required IBrush NameBrush { get; init; }
+    public required IBrush BadgeBrush { get; init; }
+    public required IBrush StatusBrush { get; init; }
+    public bool ShowInstallAction { get; init; }
     public bool CanInstall { get; init; }
     public bool CanUninstall { get; init; }
 
-    public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status)
+    public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status, string recordedVersion)
     {
         var manifest = package.Manifest;
         var requirements = new List<string>();
@@ -344,13 +352,15 @@ public sealed class PackageCard
         {
             Id = manifest.Id,
             Name = manifest.Name,
-            Description = manifest.Description,
-            VersionLabel = $"v{package.Version}",
+            Description = package.IsDeprecated && !string.IsNullOrWhiteSpace(package.Replacement)
+                ? $"{manifest.Description} Replacement: {package.Replacement}."
+                : manifest.Description,
+            VersionLabel = package.IsDeprecated ? "DEPRECATED" : $"v{package.Version}",
             RequirementsLabel = requirements.Count == 0 ? "No declared runtime requirements" : "Runtime: " + string.Join(" · ", requirements),
             DependencyLabel = manifest.Dependencies.Count(item => item.Required) == 0 ? "No required mods" : $"Requires {manifest.Dependencies.Count(item => item.Required)} other mod(s)",
             SourceLabel = subscribed ? $"Added repository · {manifest.Author}" :
                 package.IsCatalogueEntry ? $"Official catalogue · {manifest.Author}" : $"Required dependency · {manifest.Author}",
-            Status = status switch
+            Status = package.IsDeprecated ? $"Installed v{recordedVersion} · no longer supported" : status switch
             {
                 PackageInstallStatus.Current => "Installed and current",
                 PackageInstallStatus.Outdated => "Update available",
@@ -359,8 +369,13 @@ public sealed class PackageCard
                 _ => "Not installed"
             },
             ActionLabel = status == PackageInstallStatus.Current ? "Installed" : status == PackageInstallStatus.Outdated ? "Update" : status == PackageInstallStatus.Modified ? "Repair" : "Install",
-            CanInstall = status is not (PackageInstallStatus.Current or PackageInstallStatus.NotConfigured),
-            CanUninstall = status is PackageInstallStatus.Current or PackageInstallStatus.Outdated or PackageInstallStatus.Modified
+            CardBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#3A2026" : "#242B39")),
+            NameBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#F3F5F8")),
+            BadgeBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#7A2933" : "#314238")),
+            StatusBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#70D6B2")),
+            ShowInstallAction = !package.IsDeprecated,
+            CanInstall = !package.IsDeprecated && status is not (PackageInstallStatus.Current or PackageInstallStatus.NotConfigured),
+            CanUninstall = package.IsDeprecated || status is PackageInstallStatus.Current or PackageInstallStatus.Outdated or PackageInstallStatus.Modified
         };
     }
 }

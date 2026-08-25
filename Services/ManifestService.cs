@@ -53,6 +53,31 @@ public sealed class ManifestService
             {
                 foreach (var member in manifest.Mods)
                     await VisitAsync(NormalizeCollectionRepository(member.Repository), true);
+                foreach (var deprecated in manifest.DeprecatedMods)
+                {
+                    var deprecatedId = GetDeprecatedId(deprecated);
+                    if (resolved.ContainsKey(deprecatedId)) continue;
+                    resolved[deprecatedId] = new ResolvedPackage
+                    {
+                        Manifest = new ModManifest
+                        {
+                            SchemaVersion = 1,
+                            Id = deprecatedId,
+                            Name = deprecated.Name,
+                            Author = manifest.Author,
+                            Description = deprecated.Reason,
+                            Repository = NormalizeCollectionRepository(deprecated.Repository)
+                        },
+                        ManifestUrl = normalized + "#deprecated-" + Uri.EscapeDataString(deprecatedId),
+                        Version = string.Empty,
+                        DownloadUrl = string.Empty,
+                        AssetName = string.Empty,
+                        Sha256 = string.Empty,
+                        IsCatalogueEntry = true,
+                        IsDeprecated = true,
+                        Replacement = deprecated.Replacement
+                    };
+                }
                 visiting.Remove(sourceKey);
                 return;
             }
@@ -103,7 +128,11 @@ public sealed class ManifestService
 
     private static async Task<ModManifest> DownloadManifestAsync(string url, CancellationToken cancellationToken)
     {
-        using var response = await Client.GetAsync(url, cancellationToken);
+        var separator = url.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        var requestUrl = $"{url}{separator}boxmate_refresh={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
+        using var response = await Client.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException($"Could not read manifest {url}: {(int)response.StatusCode} {response.ReasonPhrase}.", null, response.StatusCode);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -237,6 +266,15 @@ public sealed class ManifestService
         {
             if (manifest.Mods.Count == 0) throw new InvalidOperationException($"{manifest.Name} collection contains no mods.");
             foreach (var member in manifest.Mods) NormalizeCollectionRepository(member.Repository);
+            foreach (var deprecated in manifest.DeprecatedMods)
+            {
+                if (string.IsNullOrWhiteSpace(deprecated.Name))
+                    throw new InvalidOperationException($"{manifest.Name} has a deprecated mod without a name.");
+                var deprecatedId = GetDeprecatedId(deprecated);
+                if (deprecatedId.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.')))
+                    throw new InvalidOperationException($"Deprecated mod id '{deprecatedId}' contains invalid characters.");
+                NormalizeCollectionRepository(deprecated.Repository);
+            }
             return;
         }
         if (!manifest.Type.Equals("mod", StringComparison.OrdinalIgnoreCase))
@@ -257,6 +295,16 @@ public sealed class ManifestService
             uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries).Length != 2)
             throw new InvalidOperationException("Collection entries must be GitHub repositories such as OWNER/REPOSITORY.");
         return uri.AbsoluteUri.TrimEnd('/');
+    }
+
+    private static string GetDeprecatedId(DeprecatedMod deprecated)
+    {
+        if (!string.IsNullOrWhiteSpace(deprecated.Id)) return deprecated.Id.Trim();
+        var repository = deprecated.Repository.Trim().TrimEnd('/');
+        var slug = repository.Split('/').LastOrDefault() ?? string.Empty;
+        if (slug.Equals("Boxroom-Plus", StringComparison.OrdinalIgnoreCase)) return "boxroom-plus";
+        if (slug.Equals("Boxroom-Plus-Posters", StringComparison.OrdinalIgnoreCase)) return "boxroom-plus-posters";
+        throw new InvalidOperationException($"Deprecated mod '{deprecated.Name}' requires an id.");
     }
 
     private static Uri ValidateHttpsUrl(string value, string label)

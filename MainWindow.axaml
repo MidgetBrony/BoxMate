@@ -84,24 +84,24 @@
             <ItemsControl x:Name="PackageList">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="local:PackageCard">
-                  <Border Background="{StaticResource SoftBrush}" CornerRadius="10" Padding="16" Margin="0,0,0,10">
+                  <Border Background="{Binding CardBrush}" CornerRadius="10" Padding="16" Margin="0,0,0,10">
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                          <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" />
-                          <Border Background="#314238" CornerRadius="10" Padding="8,2">
-                            <TextBlock Text="{Binding VersionLabel}" FontSize="12" Foreground="{StaticResource AccentBrush}" />
+                          <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" Foreground="{Binding NameBrush}" />
+                          <Border Background="{Binding BadgeBrush}" CornerRadius="10" Padding="8,2">
+                            <TextBlock Text="{Binding VersionLabel}" FontSize="12" Foreground="{Binding StatusBrush}" />
                           </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,7,24,0" Foreground="{StaticResource MutedBrush}" />
                         <TextBlock Text="{Binding SourceLabel}" Margin="0,7,0,0" FontSize="12" Foreground="#C2CAD8" />
                         <TextBlock Text="{Binding RequirementsLabel}" Margin="0,4,0,0" FontSize="12" Foreground="#C2CAD8" />
                         <TextBlock Text="{Binding DependencyLabel}" Margin="0,7,0,0" FontSize="12" Foreground="#C2CAD8" />
-                        <TextBlock Text="{Binding Status}" Margin="0,8,0,0" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="{Binding Status}" Margin="0,8,0,0" FontWeight="SemiBold" Foreground="{Binding StatusBrush}" />
                       </StackPanel>
                       <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
                         <Button Content="{Binding ActionLabel}" Tag="{Binding Id}" Padding="18,9"
-                                HorizontalAlignment="Stretch" Click="InstallButton_OnClick" IsEnabled="{Binding CanInstall}" />
+                                HorizontalAlignment="Stretch" Click="InstallButton_OnClick" IsEnabled="{Binding CanInstall}" IsVisible="{Binding ShowInstallAction}" />
                         <Button Content="Uninstall" Tag="{Binding Id}" Padding="18,7"
                                 HorizontalAlignment="Stretch" Click="UninstallButton_OnClick" IsVisible="{Binding CanUninstall}" />
                       </StackPanel>

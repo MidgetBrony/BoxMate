@@ -109,9 +109,20 @@ A collection is a catalogue and has no downloadable release of its own. BoxMate 
   "mods": [
     { "repository": "OWNER/FIRST-MOD", "recommended": true },
     { "repository": "OWNER/SECOND-MOD", "recommended": false }
+  ],
+  "deprecatedMods": [
+    {
+      "id": "old-mod-id",
+      "name": "[Deprecated] Old Mod",
+      "repository": "OWNER/OLD-MOD",
+      "replacement": "OWNER/NEW-MOD",
+      "reason": "The replacement now provides this feature."
+    }
   ]
 }
 ```
+
+Deprecated mods are shown only when their ID remains in `installed.json`. Their cards are red, explain the replacement, and provide only **Uninstall**. They are never offered as new installations.
 
 ## Build
 

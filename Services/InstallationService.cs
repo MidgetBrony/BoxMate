@@ -19,6 +19,12 @@ public sealed class InstallationService
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(10) };
     private static readonly string[] AllowedRoots = ["Mods", "Plugins", "UserLibs", "UserData"];
 
+    public bool IsRecordedInstalled(string packageId, string gameRoot) =>
+        LoadState(gameRoot).Packages.Any(item => item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+
+    public string GetRecordedVersion(string packageId, string gameRoot) =>
+        LoadState(gameRoot).Packages.FirstOrDefault(item => item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase))?.Version ?? string.Empty;
+
     public PackageInstallStatus GetPackageStatus(ResolvedPackage package, string gameRoot)
     {
         var recorded = LoadState(gameRoot).Packages.FirstOrDefault(item => item.Id.Equals(package.Manifest.Id, StringComparison.OrdinalIgnoreCase));

@@ -16,6 +16,16 @@ public sealed class ModManifest
     [JsonPropertyName("dependencies")] public List<ManifestDependency> Dependencies { get; set; } = [];
     [JsonPropertyName("release")] public ReleaseDefinition Release { get; set; } = new();
     [JsonPropertyName("mods")] public List<CollectionMod> Mods { get; set; } = [];
+    [JsonPropertyName("deprecatedMods")] public List<DeprecatedMod> DeprecatedMods { get; set; } = [];
+}
+
+public sealed class DeprecatedMod
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("repository")] public string Repository { get; set; } = string.Empty;
+    [JsonPropertyName("replacement")] public string Replacement { get; set; } = string.Empty;
+    [JsonPropertyName("reason")] public string Reason { get; set; } = string.Empty;
 }
 
 public sealed class CollectionMod
@@ -54,6 +64,8 @@ public sealed class ResolvedPackage
     public required string AssetName { get; init; }
     public required string Sha256 { get; init; }
     public bool IsCatalogueEntry { get; set; }
+    public bool IsDeprecated { get; init; }
+    public string Replacement { get; init; } = string.Empty;
 }
 
 public sealed class BoxMateSettings
