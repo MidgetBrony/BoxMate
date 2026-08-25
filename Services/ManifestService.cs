@@ -132,6 +132,14 @@ public sealed class ManifestService
         var requestUrl = $"{url}{separator}boxmate_refresh={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
         using var request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
         request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
+        if (request.RequestUri?.Host.Equals("api.github.com", StringComparison.OrdinalIgnoreCase) == true &&
+            request.RequestUri.AbsolutePath.Contains("/contents/", StringComparison.OrdinalIgnoreCase))
+        {
+            request.Headers.Accept.Clear();
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.raw+json"));
+            if (!string.IsNullOrWhiteSpace(GitHubToken))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
+        }
         using var response = await Client.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException($"Could not read manifest {url}: {(int)response.StatusCode} {response.ReasonPhrase}.", null, response.StatusCode);

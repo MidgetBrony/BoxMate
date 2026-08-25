@@ -16,7 +16,7 @@ namespace BoxMate;
 
 public partial class MainWindow : Window
 {
-    private const string OfficialCatalogue = "https://github.com/MidgetBrony/BoxMate-Mods";
+    private const string OfficialCatalogue = "https://api.github.com/repos/MidgetBrony/BoxMate-Mods/contents/manifest.json?ref=main";
     private const string BoxroomSteamUri = "steam://run/4335460";
     private readonly SettingsService _settingsService = new();
     private readonly ManifestService _manifestService = new();
