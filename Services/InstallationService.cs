@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
@@ -19,20 +20,37 @@ public sealed class InstallationService
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(10) };
     private static readonly string[] AllowedRoots = ["Mods", "Plugins", "UserLibs", "UserData"];
 
-    public bool IsRecordedInstalled(string packageId, string gameRoot) =>
-        LoadState(gameRoot).Packages.Any(item => item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+    public static bool IsTool(ResolvedPackage package) =>
+        package.Manifest.Type.Equals("tool", StringComparison.OrdinalIgnoreCase);
 
-    public string GetRecordedVersion(string packageId, string gameRoot) =>
-        LoadState(gameRoot).Packages.FirstOrDefault(item => item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase))?.Version ?? string.Empty;
+    public bool IsRecordedInstalled(ResolvedPackage package, string gameRoot) =>
+        LoadState(package, gameRoot).Packages.Any(item => item.Id.Equals(package.Manifest.Id, StringComparison.OrdinalIgnoreCase));
+
+    public string GetRecordedVersion(ResolvedPackage package, string gameRoot) =>
+        LoadState(package, gameRoot).Packages.FirstOrDefault(item => item.Id.Equals(package.Manifest.Id, StringComparison.OrdinalIgnoreCase))?.Version ?? string.Empty;
 
     public PackageInstallStatus GetPackageStatus(ResolvedPackage package, string gameRoot)
     {
-        var recorded = LoadState(gameRoot).Packages.FirstOrDefault(item => item.Id.Equals(package.Manifest.Id, StringComparison.OrdinalIgnoreCase));
+        var installRoot = GetInstallRoot(package, gameRoot);
+        var recorded = LoadState(package, gameRoot).Packages.FirstOrDefault(item => item.Id.Equals(package.Manifest.Id, StringComparison.OrdinalIgnoreCase));
         if (recorded is null) return PackageInstallStatus.NotInstalled;
         if (!string.Equals(recorded.Version, package.Version, StringComparison.OrdinalIgnoreCase)) return PackageInstallStatus.Outdated;
-        if (recorded.Files.Count == 0 || recorded.Files.Any(file => !File.Exists(GetSafeDestination(gameRoot, file))))
+        if (recorded.Files.Count == 0 || recorded.Files.Any(file => !File.Exists(GetSafeDestination(package, installRoot, file))))
             return PackageInstallStatus.Modified;
         return PackageInstallStatus.Current;
+    }
+
+    public string GetToolEntryPoint(ResolvedPackage package)
+    {
+        if (!IsTool(package)) throw new InvalidOperationException("Only tool packages can be launched.");
+        return GetSafeDestination(package, GetInstallRoot(package, string.Empty), GetEntryPoint(package));
+    }
+
+    public void LaunchTool(ResolvedPackage package)
+    {
+        var entryPoint = GetToolEntryPoint(package);
+        if (!File.Exists(entryPoint)) throw new InvalidOperationException($"{package.Manifest.Name} is missing its launch file. Repair it first.");
+        Process.Start(new ProcessStartInfo(entryPoint) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(entryPoint)! });
     }
 
     public async Task<IReadOnlyList<string>> InstallPackageAsync(
@@ -59,11 +77,13 @@ public sealed class InstallationService
         Action<string> progress, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var state = LoadState(gameRoot);
+        var target = packages.FirstOrDefault(item => item.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("That package is no longer available in the catalogue.");
+        var installRoot = GetInstallRoot(target, gameRoot);
+        var state = LoadState(target, gameRoot);
         var installed = state.Packages.FirstOrDefault(item => item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException("That mod is not recorded as installed by BoxMate.");
-        var target = packages.FirstOrDefault(item => item.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
-        if (target is not null)
+            ?? throw new InvalidOperationException("That package is not recorded as installed by BoxMate.");
+        if (!IsTool(target))
         {
             var installedIds = state.Packages.Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var dependant = packages.FirstOrDefault(package =>
@@ -84,13 +104,13 @@ public sealed class InstallationService
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (sharedFiles.Contains(relative)) continue;
-            var path = GetSafeDestination(gameRoot, relative);
+            var path = GetSafeDestination(target, installRoot, relative);
             if (File.Exists(path)) File.Delete(path);
-            RemoveEmptyParents(gameRoot, path);
+            RemoveEmptyParents(target, installRoot, path);
         }
 
         state.Packages.RemoveAll(item => item.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
-        SaveState(state, gameRoot);
+        SaveState(state, target, gameRoot);
         return Task.FromResult(installed.Name);
     }
 
@@ -118,7 +138,10 @@ public sealed class InstallationService
         ResolvedPackage package, string gameRoot, Action<string> progress, CancellationToken cancellationToken)
     {
         ValidateRequirements(package.Manifest, gameRoot);
-        var boxMateRoot = Path.Combine(gameRoot, "UserData", "BoxMate");
+        var installRoot = GetInstallRoot(package, gameRoot);
+        var boxMateRoot = IsTool(package)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BoxMate")
+            : Path.Combine(gameRoot, "UserData", "BoxMate");
         var workRoot = Path.Combine(boxMateRoot, "Downloads", package.Manifest.Id + "-" + Guid.NewGuid().ToString("N"));
         var stageRoot = Path.Combine(workRoot, "stage");
         var backupRoot = Path.Combine(boxMateRoot, "Backups", package.Manifest.Id, DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff"));
@@ -146,7 +169,7 @@ public sealed class InstallationService
                     var archiveRelative = entry.FullName.Replace('\\', '/').TrimStart('/');
                     var prefix = package.Manifest.Release.Destination?.Replace('\\', '/').Trim('/') ?? string.Empty;
                     var relative = string.IsNullOrWhiteSpace(prefix) ? archiveRelative : $"{prefix}/{archiveRelative}";
-                    var destination = GetSafeDestination(gameRoot, relative);
+                    var destination = GetSafeDestination(package, installRoot, relative);
                     var staged = Path.GetFullPath(Path.Combine(stageRoot, archiveRelative.Replace('/', Path.DirectorySeparatorChar)));
                     var stagePrefix = Path.GetFullPath(stageRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
                     if (!staged.StartsWith(stagePrefix, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException($"ZIP entry '{entry.FullName}' escapes its package.");
@@ -160,7 +183,7 @@ public sealed class InstallationService
             {
                 var relative = package.Manifest.Release.Destination;
                 if (string.IsNullOrWhiteSpace(relative)) throw new InvalidOperationException($"{package.Manifest.Name} must set release.destination for a non-ZIP asset.");
-                prepared.Add((download, relative, GetSafeDestination(gameRoot, relative)));
+                prepared.Add((download, relative, GetSafeDestination(package, installRoot, relative)));
             }
 
             var duplicate = prepared.GroupBy(item => item.Destination, StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1);
@@ -191,6 +214,13 @@ public sealed class InstallationService
                 }
                 throw;
             }
+            if (IsTool(package) && OperatingSystem.IsLinux())
+            {
+                var entryPoint = GetSafeDestination(package, installRoot, GetEntryPoint(package));
+                if (File.Exists(entryPoint))
+                    File.SetUnixFileMode(entryPoint, File.GetUnixFileMode(entryPoint) |
+                        UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+            }
             return prepared.Select(item => item.Relative).ToList();
         }
         finally
@@ -205,15 +235,15 @@ public sealed class InstallationService
             throw new InvalidOperationException($"{manifest.Name} requires MelonLoader {manifest.Requirements.MelonLoader}+ but MelonLoader was not found.");
     }
 
-    private static string GetSafeDestination(string gameRoot, string relativeDestination)
+    private static string GetSafeDestination(ResolvedPackage package, string installRoot, string relativeDestination)
     {
         if (string.IsNullOrWhiteSpace(relativeDestination) || Path.IsPathRooted(relativeDestination))
             throw new InvalidOperationException("Package destinations must be relative paths.");
         var normalized = relativeDestination.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
         var firstPart = normalized.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        if (firstPart is null || !AllowedRoots.Contains(firstPart, StringComparer.OrdinalIgnoreCase))
+        if (!IsTool(package) && (firstPart is null || !AllowedRoots.Contains(firstPart, StringComparer.OrdinalIgnoreCase)))
             throw new InvalidOperationException($"Destination '{relativeDestination}' is outside BoxMate's allowed folders.");
-        var root = Path.GetFullPath(gameRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var root = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var destination = Path.GetFullPath(Path.Combine(root, normalized));
         if (!destination.StartsWith(root, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Destination '{relativeDestination}' escapes the BOXROOM folder.");
@@ -226,9 +256,9 @@ public sealed class InstallationService
         return Convert.ToHexString(SHA256.HashData(stream)).Equals(expected, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static InstalledState LoadState(string gameRoot)
+    private static InstalledState LoadState(ResolvedPackage package, string gameRoot)
     {
-        var path = GetStatePath(gameRoot);
+        var path = GetStatePath(package, gameRoot);
         if (!File.Exists(path)) return new InstalledState();
         try { return JsonSerializer.Deserialize<InstalledState>(File.ReadAllText(path)) ?? new InstalledState(); }
         catch { return new InstalledState(); }
@@ -236,29 +266,29 @@ public sealed class InstallationService
 
     private static void RecordInstalled(ResolvedPackage package, IReadOnlyList<string> files, string gameRoot)
     {
-        var state = LoadState(gameRoot);
+        var state = LoadState(package, gameRoot);
         state.Packages.RemoveAll(item => item.Id.Equals(package.Manifest.Id, StringComparison.OrdinalIgnoreCase));
         state.Packages.Add(new InstalledPackage
         {
             Id = package.Manifest.Id, Name = package.Manifest.Name, Version = package.Version,
             ManifestUrl = package.ManifestUrl, AssetSha256 = package.Sha256, Files = files.ToList()
         });
-        SaveState(state, gameRoot);
+        SaveState(state, package, gameRoot);
     }
 
-    private static void SaveState(InstalledState state, string gameRoot)
+    private static void SaveState(InstalledState state, ResolvedPackage package, string gameRoot)
     {
-        var path = GetStatePath(gameRoot);
+        var path = GetStatePath(package, gameRoot);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(temporary, path, true);
     }
 
-    private static void RemoveEmptyParents(string gameRoot, string filePath)
+    private static void RemoveEmptyParents(ResolvedPackage package, string installRoot, string filePath)
     {
-        var root = Path.GetFullPath(gameRoot).TrimEnd(Path.DirectorySeparatorChar);
-        var protectedRoots = AllowedRoots.Select(name => Path.Combine(root, name))
+        var root = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar);
+        var protectedRoots = (IsTool(package) ? [] : AllowedRoots.Select(name => Path.Combine(root, name)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var directory = Path.GetDirectoryName(filePath);
         while (!string.IsNullOrWhiteSpace(directory) &&
@@ -272,5 +302,21 @@ public sealed class InstallationService
         }
     }
 
-    private static string GetStatePath(string gameRoot) => Path.Combine(gameRoot, "UserData", "BoxMate", "installed.json");
+    private static string GetInstallRoot(ResolvedPackage package, string gameRoot) => IsTool(package)
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BoxMate", "Tools", package.Manifest.Id)
+        : gameRoot;
+
+    private static string GetEntryPoint(ResolvedPackage package)
+    {
+        var entryPoint = OperatingSystem.IsWindows()
+            ? package.Manifest.Release.EntryPointWindows ?? package.Manifest.Release.EntryPoint
+            : package.Manifest.Release.EntryPointLinux ?? package.Manifest.Release.EntryPoint;
+        return !string.IsNullOrWhiteSpace(entryPoint)
+            ? entryPoint
+            : throw new InvalidOperationException($"{package.Manifest.Name} has no launch file for this operating system.");
+    }
+
+    private static string GetStatePath(ResolvedPackage package, string gameRoot) => IsTool(package)
+        ? Path.Combine(GetInstallRoot(package, gameRoot), ".boxmate-installed.json")
+        : Path.Combine(gameRoot, "UserData", "BoxMate", "installed.json");
 }

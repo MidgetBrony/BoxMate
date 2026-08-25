@@ -13,19 +13,21 @@
 
   <Grid RowDefinitions="Auto,*,Auto">
     <Border Grid.Row="0" Background="#151A24" Padding="28,20">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
         <StackPanel>
           <TextBlock Text="BOXMATE" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
-          <TextBlock Text="Add mod repositories. BoxMate handles releases and requirements." Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Text="Install BOXROOM mods and companion tools. BoxMate handles releases, updates, and requirements." Foreground="{StaticResource MutedBrush}" />
         </StackPanel>
-        <Button Grid.Column="1" x:Name="UpdateBoxMateButton" IsVisible="False" Content="Update BoxMate"
+        <Button Grid.Column="1" Content="Launch BOXROOM" Padding="16,10" Margin="0,0,10,0"
+                Click="LaunchBoxroomButton_OnClick" VerticalAlignment="Center" />
+        <Button Grid.Column="2" x:Name="UpdateBoxMateButton" IsVisible="False" Content="Update BoxMate"
                 Padding="16,10" Margin="0,0,10,0" Click="UpdateBoxMateButton_OnClick" VerticalAlignment="Center" />
-        <Button Grid.Column="2" x:Name="GitHubSignInButton" Width="42" Height="42" Padding="9" Margin="0,0,10,0"
+        <Button Grid.Column="3" x:Name="GitHubSignInButton" Width="42" Height="42" Padding="9" Margin="0,0,10,0"
                 Click="GitHubSignInButton_OnClick" VerticalAlignment="Center">
           <Path x:Name="GitHubIconPath" Stretch="Uniform" Fill="#687386"
                 Data="M12,2 C6.48,2 2,6.58 2,12.22 C2,16.73 4.87,20.55 8.84,21.9 C9.34,22 9.52,21.68 9.52,21.41 L9.51,19.5 C6.73,20.12 6.14,18.29 6.14,18.29 C5.68,17.11 5.03,16.8 5.03,16.8 C4.12,16.16 5.1,16.17 5.1,16.17 C6.1,16.24 6.63,17.22 6.63,17.22 C7.52,18.78 8.97,18.33 9.54,18.07 C9.63,17.4 9.89,16.94 10.17,16.68 C7.95,16.42 5.62,15.55 5.62,11.64 C5.62,10.53 6,9.62 6.65,8.91 C6.55,8.65 6.22,7.62 6.75,6.22 C6.75,6.22 7.59,5.95 9.5,7.26 C10.3,7.03 11.15,6.91 12,6.91 C12.85,6.91 13.7,7.03 14.5,7.26 C16.41,5.95 17.25,6.22 17.25,6.22 C17.78,7.62 17.45,8.65 17.35,8.91 C18,9.62 18.38,10.53 18.38,11.64 C18.38,15.56 16.04,16.42 13.81,16.68 C14.17,17 14.49,17.63 14.49,18.59 L14.48,21.41 C14.48,21.68 14.66,22.01 15.17,21.9 C19.13,20.54 22,16.73 22,12.22 C22,6.58 17.52,2 12,2 Z" />
         </Button>
-        <Button Grid.Column="3" x:Name="RefreshButton" Content="Refresh mods" Padding="20,10"
+        <Button Grid.Column="4" x:Name="RefreshButton" Content="Refresh mods" Padding="20,10"
                 Click="RefreshButton_OnClick" VerticalAlignment="Center" />
       </Grid>
     </Border>
@@ -74,7 +76,7 @@
         <Grid RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="*,Auto">
             <StackPanel>
-              <TextBlock Text="YOUR MODS" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+              <TextBlock Text="MODS &amp; TOOLS" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
               <TextBlock x:Name="ManifestSummaryText" Text="Paste a raw manifest link to begin." Foreground="{StaticResource MutedBrush}" />
             </StackPanel>
             <ProgressBar x:Name="BusyProgress" Grid.Column="1" Width="150" IsIndeterminate="True" IsVisible="False" />
@@ -100,6 +102,8 @@
                         <TextBlock Text="{Binding Status}" Margin="0,8,0,0" FontWeight="SemiBold" Foreground="{Binding StatusBrush}" />
                       </StackPanel>
                       <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
+                        <Button Content="Open" Tag="{Binding Id}" Padding="18,9"
+                                HorizontalAlignment="Stretch" Click="OpenToolButton_OnClick" IsVisible="{Binding CanLaunch}" />
                         <Button Content="{Binding ActionLabel}" Tag="{Binding Id}" Padding="18,9"
                                 HorizontalAlignment="Stretch" Click="InstallButton_OnClick" IsEnabled="{Binding CanInstall}" IsVisible="{Binding ShowInstallAction}" />
                         <Button Content="Uninstall" Tag="{Binding Id}" Padding="18,7"

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ namespace BoxMate;
 public partial class MainWindow : Window
 {
     private const string OfficialCatalogue = "https://github.com/MidgetBrony/BoxMate-Mods";
+    private const string BoxroomSteamUri = "steam://run/4335460";
     private readonly SettingsService _settingsService = new();
     private readonly ManifestService _manifestService = new();
     private readonly InstallationService _installationService = new();
@@ -48,6 +50,19 @@ public partial class MainWindow : Window
     }
 
     private async void RefreshButton_OnClick(object? sender, RoutedEventArgs e) => await RefreshManifestsAsync();
+
+    private void LaunchBoxroomButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(BoxroomSteamUri) { UseShellExecute = true });
+            SetStatus("Asked Steam to launch BOXROOM (App ID 4335460).");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not open Steam: {ex.Message}");
+        }
+    }
 
     private async void ManageSourcesButton_OnClick(object? sender, RoutedEventArgs e)
     {
@@ -141,14 +156,17 @@ public partial class MainWindow : Window
     {
         if (sender is not Button { Tag: string packageId }) return;
         ReadSettingsFromForm();
-        if (!ValidateGameFolder(_settings.GameFolder))
+        var requested = _packages.FirstOrDefault(package => package.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+        if (requested is null) return;
+        if (!InstallationService.IsTool(requested) && !ValidateGameFolder(_settings.GameFolder))
         {
             SetStatus("Choose a valid BOXROOM folder before installing.");
             return;
         }
         await RunBusyAsync(async () =>
         {
-            var needsMelonLoader = _packages.Any(package => !string.IsNullOrWhiteSpace(package.Manifest.Requirements.MelonLoader));
+            var needsMelonLoader = !InstallationService.IsTool(requested) &&
+                !string.IsNullOrWhiteSpace(requested.Manifest.Requirements.MelonLoader);
             if (needsMelonLoader && !_melonLoaderService.IsInstalled(_settings.GameFolder))
             {
                 SetStatus("Installing required MelonLoader...");
@@ -165,12 +183,27 @@ public partial class MainWindow : Window
         });
     }
 
+    private void OpenToolButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string packageId }) return;
+        var package = _packages.FirstOrDefault(item => item.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+        if (package is null) return;
+        try
+        {
+            _installationService.LaunchTool(package);
+            SetStatus($"Opened {package.Manifest.Name}.");
+        }
+        catch (Exception ex) { SetStatus($"Error: {ex.Message}"); }
+    }
+
     private async void UninstallButton_OnClick(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string packageId }) return;
         var package = _packages.FirstOrDefault(item => item.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
-        if (package is null || !await ConfirmAsync("Uninstall mod?",
-                $"Remove {package.Manifest.Name} from BOXROOM? Only files recorded by BoxMate will be removed.")) return;
+        if (package is null || !await ConfirmAsync("Uninstall package?",
+                InstallationService.IsTool(package)
+                    ? $"Remove {package.Manifest.Name}? Only files installed by BoxMate will be removed."
+                    : $"Remove {package.Manifest.Name} from BOXROOM? Only files recorded by BoxMate will be removed.")) return;
         ReadSettingsFromForm();
         await RunBusyAsync(async () =>
         {
@@ -234,16 +267,18 @@ public partial class MainWindow : Window
             source.Equals(package.ManifestUrl, StringComparison.OrdinalIgnoreCase) ||
             source.TrimEnd('/').Equals(package.Manifest.Repository.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
         var visiblePackages = _packages.Where(package => !package.IsDeprecated ||
-            (validRoot && _installationService.IsRecordedInstalled(package.Manifest.Id, _settings.GameFolder)));
+            ((InstallationService.IsTool(package) || validRoot) && _installationService.IsRecordedInstalled(package, _settings.GameFolder)));
         var cards = visiblePackages.OrderBy(package => package.IsDeprecated ? 0 : package.IsCatalogueEntry || IsSubscribed(package) ? 1 : 2)
             .ThenBy(package => package.Manifest.Name)
-            .Select(package => PackageCard.From(package, IsSubscribed(package), validRoot
+            .Select(package => PackageCard.From(package, IsSubscribed(package), InstallationService.IsTool(package) || validRoot
                 ? _installationService.GetPackageStatus(package, _settings.GameFolder)
                 : PackageInstallStatus.NotConfigured,
-                validRoot ? _installationService.GetRecordedVersion(package.Manifest.Id, _settings.GameFolder) : string.Empty,
+                InstallationService.IsTool(package) || validRoot ? _installationService.GetRecordedVersion(package, _settings.GameFolder) : string.Empty,
                 _packages)).ToList();
         PackageList.ItemsSource = cards;
-        ManifestSummaryText.Text = $"{cards.Count} mod{(cards.Count == 1 ? string.Empty : "s")}, including required dependencies";
+        var toolCount = cards.Count(card => card.IsTool);
+        var modCount = cards.Count - toolCount;
+        ManifestSummaryText.Text = $"{modCount} mod{(modCount == 1 ? string.Empty : "s")} · {toolCount} tool{(toolCount == 1 ? string.Empty : "s")}";
     }
 
     private async Task RunBusyAsync(Func<Task> work)
@@ -342,11 +377,14 @@ public sealed class PackageCard
     public bool ShowInstallAction { get; init; }
     public bool CanInstall { get; init; }
     public bool CanUninstall { get; init; }
+    public bool CanLaunch { get; init; }
+    public bool IsTool { get; init; }
 
     public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status, string recordedVersion,
         IReadOnlyCollection<ResolvedPackage> allPackages)
     {
         var manifest = package.Manifest;
+        var isTool = InstallationService.IsTool(package);
         var requirements = new List<string>();
         if (!string.IsNullOrWhiteSpace(manifest.Requirements.MelonLoader)) requirements.Add($"MelonLoader {manifest.Requirements.MelonLoader}+");
         if (!string.IsNullOrWhiteSpace(manifest.Requirements.GameVersion)) requirements.Add($"BOXROOM {manifest.Requirements.GameVersion}");
@@ -363,8 +401,9 @@ public sealed class PackageCard
                 ? $"{manifest.Description} Replacement: {package.Replacement}."
                 : manifest.Description,
             VersionLabel = package.IsDeprecated ? "DEPRECATED" : $"v{package.Version}",
-            RequirementsLabel = requirements.Count == 0 ? "No declared runtime requirements" : "Runtime: " + string.Join(" · ", requirements),
-            DependencyLabel = requiredMods.Count == 0 ? "No required mods" : "Requires " + string.Join(" · ", requiredMods),
+            RequirementsLabel = isTool ? $"Desktop tool · {(OperatingSystem.IsWindows() ? "Windows" : "Linux")}" :
+                requirements.Count == 0 ? "No declared runtime requirements" : "Runtime: " + string.Join(" · ", requirements),
+            DependencyLabel = requiredMods.Count == 0 ? (isTool ? "Installed separately from BOXROOM" : "No required mods") : "Requires " + string.Join(" · ", requiredMods),
             SourceLabel = subscribed ? $"Added repository · {manifest.Author}" :
                 package.IsCatalogueEntry ? $"Official catalogue · {manifest.Author}" : $"Required dependency · {manifest.Author}",
             Status = package.IsDeprecated ? $"Installed v{recordedVersion} · no longer supported" : status switch
@@ -372,7 +411,7 @@ public sealed class PackageCard
                 PackageInstallStatus.Current => "Installed and current",
                 PackageInstallStatus.Outdated => "Update available",
                 PackageInstallStatus.Modified => "Installed files are missing",
-                PackageInstallStatus.NotConfigured => "Choose your BOXROOM folder",
+                PackageInstallStatus.NotConfigured => isTool ? "Ready to install" : "Choose your BOXROOM folder",
                 _ => "Not installed"
             },
             ActionLabel = status == PackageInstallStatus.Current ? "Installed" : status == PackageInstallStatus.Outdated ? "Update" : status == PackageInstallStatus.Modified ? "Repair" : "Install",
@@ -382,7 +421,9 @@ public sealed class PackageCard
             StatusBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#70D6B2")),
             ShowInstallAction = !package.IsDeprecated,
             CanInstall = !package.IsDeprecated && status is not (PackageInstallStatus.Current or PackageInstallStatus.NotConfigured),
-            CanUninstall = package.IsDeprecated || status is PackageInstallStatus.Current or PackageInstallStatus.Outdated or PackageInstallStatus.Modified
+            CanUninstall = package.IsDeprecated || status is PackageInstallStatus.Current or PackageInstallStatus.Outdated or PackageInstallStatus.Modified,
+            CanLaunch = isTool && status is PackageInstallStatus.Current,
+            IsTool = isTool
         };
     }
 

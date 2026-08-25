@@ -155,11 +155,16 @@ public sealed class ManifestService
 
         var apiUrl = $"https://api.github.com/repos/{Uri.EscapeDataString(parts[0])}/{Uri.EscapeDataString(parts[1])}/releases/latest";
         var release = await LoadGitHubReleaseAsync(apiUrl, manifest.Name, cancellationToken);
-        var matchingAssets = release.Assets.Where(item => AssetMatches(item.Name, manifest.Release.Asset)).ToList();
+        var assetPattern = OperatingSystem.IsWindows()
+            ? manifest.Release.AssetWindows ?? manifest.Release.Asset
+            : manifest.Release.AssetLinux ?? manifest.Release.Asset;
+        if (string.IsNullOrWhiteSpace(assetPattern))
+            throw new InvalidOperationException($"{manifest.Name} does not publish an asset for this operating system.");
+        var matchingAssets = release.Assets.Where(item => AssetMatches(item.Name, assetPattern)).ToList();
         if (matchingAssets.Count == 0)
-            throw new InvalidOperationException($"Latest {manifest.Name} release does not contain an asset matching '{manifest.Release.Asset}'.");
+            throw new InvalidOperationException($"Latest {manifest.Name} release does not contain an asset matching '{assetPattern}'.");
         if (matchingAssets.Count > 1)
-            throw new InvalidOperationException($"Latest {manifest.Name} release contains more than one asset matching '{manifest.Release.Asset}'. Use a more specific pattern.");
+            throw new InvalidOperationException($"Latest {manifest.Name} release contains more than one asset matching '{assetPattern}'. Use a more specific pattern.");
         var asset = matchingAssets[0];
 
         var sha256 = ParseDigest(asset.Digest);
@@ -277,10 +282,19 @@ public sealed class ManifestService
             }
             return;
         }
-        if (!manifest.Type.Equals("mod", StringComparison.OrdinalIgnoreCase))
+        if (!manifest.Type.Equals("mod", StringComparison.OrdinalIgnoreCase) &&
+            !manifest.Type.Equals("tool", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"{manifest.Name} uses unsupported manifest type '{manifest.Type}'.");
-        if (string.IsNullOrWhiteSpace(manifest.Repository) || string.IsNullOrWhiteSpace(manifest.Release.Asset))
+        if (string.IsNullOrWhiteSpace(manifest.Repository) ||
+            (string.IsNullOrWhiteSpace(manifest.Release.Asset) &&
+             string.IsNullOrWhiteSpace(manifest.Release.AssetWindows) &&
+             string.IsNullOrWhiteSpace(manifest.Release.AssetLinux)))
             throw new InvalidOperationException($"{manifest.Name} requires repository and release.asset values.");
+        if (manifest.Type.Equals("tool", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(manifest.Release.EntryPoint) &&
+            string.IsNullOrWhiteSpace(manifest.Release.EntryPointWindows) &&
+            string.IsNullOrWhiteSpace(manifest.Release.EntryPointLinux))
+            throw new InvalidOperationException($"{manifest.Name} tool requires release.entryPoint.");
         foreach (var dependency in manifest.Dependencies.Where(item => item.Required))
             ValidateHttpsUrl(dependency.Manifest, "dependency manifest");
     }

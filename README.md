@@ -1,6 +1,8 @@
 # BoxMate
 
-BoxMate is a Windows and Linux/Steam Deck mod manager for BOXROOM. The official [`MidgetBrony/BoxMate-Mods`](https://github.com/MidgetBrony/BoxMate-Mods) catalogue is built in, so generally available mods appear on first launch without setup. Add `OWNER/REPOSITORY` or a repository link for anything outside the catalogue, choose the BOXROOM folder, refresh, and install. BoxMate finds `manifest.json` at the repository root on `main` or `master`; required repositories are discovered and installed automatically. Existing raw manifest links remain supported for compatibility.
+BoxMate is a Windows and Linux/Steam Deck manager for BOXROOM mods and companion tools. The official [`MidgetBrony/BoxMate-Mods`](https://github.com/MidgetBrony/BoxMate-Mods) catalogue is built in, so generally available mods plus BR-QImport and Boxroom Studio appear on first launch without setup. Companion tools install separately in the current user's BoxMate data folder and do not require a BOXROOM folder. BoxMate checks their latest GitHub release on refresh, offers **Update** or **Repair** when needed, and provides an **Open** button after installation.
+
+Add `OWNER/REPOSITORY` or a repository link for anything outside the catalogue, choose the BOXROOM folder for mods, refresh, and install. BoxMate finds `manifest.json` at the repository root on `main` or `master`; required repositories are discovered and installed automatically. Existing raw manifest links remain supported for compatibility.
 
 When a manifest requires MelonLoader and it is missing, BoxMate downloads the latest [official x64 archive from LavaGang](https://github.com/LavaGang/MelonLoader/releases/latest), verifies GitHub's SHA-256 digest, and installs it before the mod. This is also the correct archive for the Windows build of BOXROOM running through Wine/Proton. The setup panel has a separate **Install / update MelonLoader** button. BOXROOM must be closed during this operation.
 
@@ -89,6 +91,33 @@ BoxMate rejects absolute paths, traversal outside BOXROOM, unexpected root folde
 Installed state is recorded in `UserData/BoxMate/installed.json`.
 
 Installed mod cards include an **Uninstall** action. BoxMate removes only the files recorded for that package, preserves files shared with another installed package, and refuses to remove a dependency while another installed mod still requires it. MelonLoader is managed separately and is never removed as part of uninstalling a mod.
+
+## Companion tool manifests
+
+Set `type` to `tool` for a separately installed desktop program. Tool ZIPs are extracted into `%LOCALAPPDATA%/BoxMate/Tools/<id>` on Windows or the equivalent per-user local application-data directory on Linux. Their paths are never interpreted relative to BOXROOM. Provide platform-specific asset patterns and entry points when filenames differ:
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "tool",
+  "id": "my-boxroom-tool",
+  "name": "My BOXROOM Tool",
+  "author": "Author",
+  "description": "A separately installed BOXROOM companion program.",
+  "repository": "https://github.com/OWNER/REPOSITORY",
+  "requirements": {},
+  "dependencies": [],
+  "release": {
+    "provider": "github",
+    "assetWindows": "MyTool-v*-win-x64.zip",
+    "assetLinux": "MyTool-v*-linux-x64.zip",
+    "entryPointWindows": "MyTool.exe",
+    "entryPointLinux": "MyTool"
+  }
+}
+```
+
+BoxMate still requires GitHub's SHA-256 digest (or a declared checksum asset), stages files before replacement, rolls back a failed install, tracks each tool independently, and only removes files recorded for that tool. Close a running tool before updating or uninstalling it.
 
 ## BoxMate updates
 

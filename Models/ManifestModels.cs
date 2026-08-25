@@ -51,8 +51,13 @@ public sealed class ReleaseDefinition
 {
     [JsonPropertyName("provider")] public string Provider { get; set; } = "github";
     [JsonPropertyName("asset")] public string Asset { get; set; } = string.Empty;
+    [JsonPropertyName("assetWindows")] public string? AssetWindows { get; set; }
+    [JsonPropertyName("assetLinux")] public string? AssetLinux { get; set; }
     [JsonPropertyName("checksumAsset")] public string? ChecksumAsset { get; set; }
     [JsonPropertyName("destination")] public string? Destination { get; set; }
+    [JsonPropertyName("entryPoint")] public string? EntryPoint { get; set; }
+    [JsonPropertyName("entryPointWindows")] public string? EntryPointWindows { get; set; }
+    [JsonPropertyName("entryPointLinux")] public string? EntryPointLinux { get; set; }
 }
 
 public sealed class ResolvedPackage
