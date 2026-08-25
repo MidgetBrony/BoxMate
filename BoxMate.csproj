@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <AssemblyName>BoxMate</AssemblyName>
     <Description>Cross-platform BOXROOM mod manager</Description>
     <RepositoryUrl>https://github.com/MidgetBrony/BoxMate</RepositoryUrl>

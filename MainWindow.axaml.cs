@@ -240,7 +240,8 @@ public partial class MainWindow : Window
             .Select(package => PackageCard.From(package, IsSubscribed(package), validRoot
                 ? _installationService.GetPackageStatus(package, _settings.GameFolder)
                 : PackageInstallStatus.NotConfigured,
-                validRoot ? _installationService.GetRecordedVersion(package.Manifest.Id, _settings.GameFolder) : string.Empty)).ToList();
+                validRoot ? _installationService.GetRecordedVersion(package.Manifest.Id, _settings.GameFolder) : string.Empty,
+                _packages)).ToList();
         PackageList.ItemsSource = cards;
         ManifestSummaryText.Text = $"{cards.Count} mod{(cards.Count == 1 ? string.Empty : "s")}, including required dependencies";
     }
@@ -342,12 +343,18 @@ public sealed class PackageCard
     public bool CanInstall { get; init; }
     public bool CanUninstall { get; init; }
 
-    public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status, string recordedVersion)
+    public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status, string recordedVersion,
+        IReadOnlyCollection<ResolvedPackage> allPackages)
     {
         var manifest = package.Manifest;
         var requirements = new List<string>();
         if (!string.IsNullOrWhiteSpace(manifest.Requirements.MelonLoader)) requirements.Add($"MelonLoader {manifest.Requirements.MelonLoader}+");
         if (!string.IsNullOrWhiteSpace(manifest.Requirements.GameVersion)) requirements.Add($"BOXROOM {manifest.Requirements.GameVersion}");
+        var requiredMods = manifest.Dependencies
+            .Where(dependency => dependency.Required)
+            .Select(dependency => ResolveDependencyName(dependency.Manifest, allPackages))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         return new PackageCard
         {
             Id = manifest.Id,
@@ -357,7 +364,7 @@ public sealed class PackageCard
                 : manifest.Description,
             VersionLabel = package.IsDeprecated ? "DEPRECATED" : $"v{package.Version}",
             RequirementsLabel = requirements.Count == 0 ? "No declared runtime requirements" : "Runtime: " + string.Join(" · ", requirements),
-            DependencyLabel = manifest.Dependencies.Count(item => item.Required) == 0 ? "No required mods" : $"Requires {manifest.Dependencies.Count(item => item.Required)} other mod(s)",
+            DependencyLabel = requiredMods.Count == 0 ? "No required mods" : "Requires " + string.Join(" · ", requiredMods),
             SourceLabel = subscribed ? $"Added repository · {manifest.Author}" :
                 package.IsCatalogueEntry ? $"Official catalogue · {manifest.Author}" : $"Required dependency · {manifest.Author}",
             Status = package.IsDeprecated ? $"Installed v{recordedVersion} · no longer supported" : status switch
@@ -377,5 +384,30 @@ public sealed class PackageCard
             CanInstall = !package.IsDeprecated && status is not (PackageInstallStatus.Current or PackageInstallStatus.NotConfigured),
             CanUninstall = package.IsDeprecated || status is PackageInstallStatus.Current or PackageInstallStatus.Outdated or PackageInstallStatus.Modified
         };
+    }
+
+    private static string ResolveDependencyName(string manifestUrl, IReadOnlyCollection<ResolvedPackage> allPackages)
+    {
+        if (Uri.TryCreate(manifestUrl, UriKind.Absolute, out var dependencyUri))
+        {
+            var resolved = allPackages.FirstOrDefault(candidate =>
+                Uri.TryCreate(candidate.ManifestUrl, UriKind.Absolute, out var candidateUri) &&
+                Uri.Compare(dependencyUri, candidateUri, UriComponents.HttpRequestUrl, UriFormat.SafeUnescaped,
+                    StringComparison.OrdinalIgnoreCase) == 0);
+            if (resolved is not null)
+                return resolved.Manifest.Name;
+
+            var segments = dependencyUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2)
+            {
+                var repositoryName = dependencyUri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase)
+                    ? segments[1]
+                    : segments[^1];
+                if (!repositoryName.Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
+                    return Uri.UnescapeDataString(repositoryName).Replace('-', ' ');
+            }
+        }
+
+        return "Unknown required mod";
     }
 }
