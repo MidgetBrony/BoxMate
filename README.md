@@ -4,6 +4,8 @@ BoxMate is a Windows and Linux/Steam Deck manager for BOXROOM mods and companion
 
 Add `OWNER/REPOSITORY` or a repository link for anything outside the catalogue, choose the BOXROOM folder for mods, refresh, and install. BoxMate finds `manifest.json` at the repository root on `main` or `master`; required repositories are discovered and installed automatically. Existing raw manifest links remain supported for compatibility.
 
+The BOXROOM setup panel can open the selected game's `Mods` folder or `MelonLoader/Latest.log` directly. The Mods folder is created when missing. `Latest.log` becomes available after BOXROOM has launched through MelonLoader at least once.
+
 When a manifest requires MelonLoader and it is missing, BoxMate downloads the latest [official x64 archive from LavaGang](https://github.com/LavaGang/MelonLoader/releases/latest), verifies GitHub's SHA-256 digest, and installs it before the mod. This is also the correct archive for the Windows build of BOXROOM running through Wine/Proton. The setup panel has a separate **Install / update MelonLoader** button. BOXROOM must be closed during this operation.
 
 ## Linux and Steam Deck

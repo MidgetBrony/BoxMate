@@ -89,6 +89,52 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenModsFolderButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var gameRoot = GameFolderBox.Text?.Trim() ?? string.Empty;
+        if (!ValidateGameFolder(gameRoot))
+        {
+            SetStatus("Choose a valid BOXROOM folder first.");
+            return;
+        }
+
+        try
+        {
+            var modsFolder = Path.Combine(gameRoot, "Mods");
+            Directory.CreateDirectory(modsFolder);
+            OpenWithSystem(modsFolder);
+            SetStatus("Opened the BOXROOM Mods folder.");
+        }
+        catch (Exception ex) { SetStatus($"Could not open the Mods folder: {ex.Message}"); }
+    }
+
+    private void OpenLatestLogButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var gameRoot = GameFolderBox.Text?.Trim() ?? string.Empty;
+        if (!ValidateGameFolder(gameRoot))
+        {
+            SetStatus("Choose a valid BOXROOM folder first.");
+            return;
+        }
+
+        var latestLog = Path.Combine(gameRoot, "MelonLoader", "Latest.log");
+        if (!File.Exists(latestLog))
+        {
+            SetStatus("Latest.log was not found. Launch BOXROOM with MelonLoader once, then try again.");
+            return;
+        }
+
+        try
+        {
+            OpenWithSystem(latestLog);
+            SetStatus("Opened MelonLoader/Latest.log.");
+        }
+        catch (Exception ex) { SetStatus($"Could not open Latest.log: {ex.Message}"); }
+    }
+
+    private static void OpenWithSystem(string path) =>
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+
     private async void InstallMelonLoaderButton_OnClick(object? sender, RoutedEventArgs e)
     {
         ReadSettingsFromForm();

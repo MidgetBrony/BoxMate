@@ -48,6 +48,12 @@
             <TextBlock Text="BOXROOM folder" Foreground="{StaticResource MutedBrush}" />
             <TextBox x:Name="GameFolderBox" Margin="0,6,0,0" PlaceholderText="Choose the folder containing BOXROOM.exe" />
             <Button Content="Choose folder" HorizontalAlignment="Left" Margin="0,8,0,0" Click="ChooseFolderButton_OnClick" />
+            <Grid ColumnDefinitions="*,8,*" Margin="0,8,0,0">
+              <Button Grid.Column="0" Content="Open Mods Folder" HorizontalAlignment="Stretch"
+                      Click="OpenModsFolderButton_OnClick" />
+              <Button Grid.Column="2" Content="Open Latest.log" HorizontalAlignment="Stretch"
+                      Click="OpenLatestLogButton_OnClick" />
+            </Grid>
           </StackPanel>
 
           <Border Grid.Row="3" Background="{StaticResource SoftBrush}" CornerRadius="8" Padding="14" Margin="0,18,0,0">
