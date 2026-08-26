@@ -16,6 +16,8 @@ using BoxMate.Models;
 
 namespace BoxMate.Services;
 
+public sealed class GitHubAuthenticationException(string message) : InvalidOperationException(message);
+
 public sealed class ManifestService
 {
     private static readonly HttpClient Client = CreateClient();
@@ -141,6 +143,8 @@ public sealed class ManifestService
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
         }
         using var response = await Client.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            throw new GitHubAuthenticationException("GitHub rejected the saved sign-in while reading a manifest.");
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException($"Could not read manifest {url}: {(int)response.StatusCode} {response.ReasonPhrase}.", null, response.StatusCode);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -229,6 +233,8 @@ public sealed class ManifestService
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
         if (!string.IsNullOrWhiteSpace(cached?.ETag)) request.Headers.TryAddWithoutValidation("If-None-Match", cached.ETag);
         using var response = await Client.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            throw new GitHubAuthenticationException($"GitHub rejected the saved sign-in while reading {packageName}.");
         if (response.StatusCode == System.Net.HttpStatusCode.NotModified && cached is not null)
         {
             cached.SavedAt = DateTimeOffset.UtcNow;

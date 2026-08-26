@@ -145,6 +145,7 @@ public partial class MainWindow : Window
         }
         await RunBusyAsync(async () =>
         {
+            await EnsureGitHubTokenFreshAsync();
             var version = await _melonLoaderService.InstallLatestAsync(_settings.GameFolder,
                 message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
             UpdateMelonLoaderStatus();
@@ -279,18 +280,48 @@ public partial class MainWindow : Window
         await RunBusyAsync(async () =>
         {
             var sources = new[] { OfficialCatalogue }.Concat(_settings.ManifestUrls);
-            _packages = await _manifestService.ResolveAllAsync(sources,
-                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+            var authenticationWasCleared = await EnsureGitHubTokenFreshAsync();
+            try
+            {
+                _packages = await ResolvePackagesAsync(sources);
+            }
+            catch (GitHubAuthenticationException) when (!string.IsNullOrWhiteSpace(_gitHubToken))
+            {
+                var refreshedToken = await _gitHubAuthService.RefreshAccessTokenAsync();
+                if (!string.IsNullOrWhiteSpace(refreshedToken))
+                {
+                    _gitHubToken = refreshedToken;
+                    ApplyGitHubAuthentication();
+                    UpdateGitHubStatus();
+                    _packages = await ResolvePackagesAsync(sources);
+                }
+                else
+                {
+                    _gitHubAuthService.SignOut();
+                    _gitHubToken = null;
+                    ApplyGitHubAuthentication();
+                    UpdateGitHubStatus();
+                    authenticationWasCleared = true;
+                    _packages = await ResolvePackagesAsync(sources);
+                }
+            }
             await _settingsService.SaveAsync(_settings);
             RenderPackages();
-            SetStatus("Manifests and GitHub releases refreshed.");
+            SetStatus(authenticationWasCleared
+                ? "GitHub sign-in expired and could not be renewed. Catalogue refreshed anonymously; sign in again to restore the higher limit."
+                : "Manifests and GitHub releases refreshed.");
         });
     }
+
+    private Task<IReadOnlyList<ResolvedPackage>> ResolvePackagesAsync(IEnumerable<string> sources) =>
+        _manifestService.ResolveAllAsync(sources,
+            message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
 
     private async Task CheckForBoxMateUpdateAsync()
     {
         try
         {
+            await EnsureGitHubTokenFreshAsync();
             _availableUpdate = await _selfUpdateService.CheckAsync();
             UpdateBoxMateButton.IsVisible = _availableUpdate is not null;
             if (_availableUpdate is not null)
@@ -362,6 +393,19 @@ public partial class MainWindow : Window
         ManifestService.SetGitHubToken(_gitHubToken);
         MelonLoaderService.SetGitHubToken(_gitHubToken);
         SelfUpdateService.SetGitHubToken(_gitHubToken);
+    }
+
+    private async Task<bool> EnsureGitHubTokenFreshAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_gitHubToken)) return false;
+        var hadToken = true;
+        var validToken = await _gitHubAuthService.GetValidAccessTokenAsync();
+        if (string.Equals(validToken, _gitHubToken, StringComparison.Ordinal)) return false;
+
+        _gitHubToken = validToken;
+        ApplyGitHubAuthentication();
+        UpdateGitHubStatus();
+        return hadToken && string.IsNullOrWhiteSpace(validToken);
     }
 
     private void UpdateGitHubStatus()

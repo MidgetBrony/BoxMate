@@ -29,7 +29,7 @@ Paste it into **Steam → BOXROOM → Properties → General → Launch Options*
 
 ## Optional GitHub sign-in
 
-Anonymous use works without an account and is backed by BoxMate's persistent release cache. An OAuth-enabled build also offers **Sign in with GitHub**, raising GitHub release lookups from 60 per IP per hour to 5,000 per signed-in user per hour. The browser/device flow never asks users to paste a personal access token. On Windows the token is encrypted for the current user with DPAPI. On Linux it is stored in BoxMate's per-user data directory with user-only file permissions. **Sign out of GitHub** removes it.
+Anonymous use works without an account and is backed by BoxMate's persistent release cache. An OAuth-enabled build also offers **Sign in with GitHub**, raising GitHub release lookups from 60 per IP per hour to 5,000 per signed-in user per hour. The browser/device flow never asks users to paste a personal access token. Expiring access tokens are renewed automatically with their rotating refresh token. If GitHub revokes a credential and it cannot be renewed, BoxMate clears it, retries anonymously, and asks the user to sign in again instead of hiding the catalogue. On Windows the credential record is encrypted for the current user with DPAPI. On Linux it is stored in BoxMate's per-user data directory with user-only file permissions. **Sign out of GitHub** removes it.
 
 Before distributing an OAuth-enabled build, register a GitHub OAuth App, enable its Device Flow setting, and publish with its public client ID:
 

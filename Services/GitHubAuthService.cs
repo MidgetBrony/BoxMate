@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 namespace BoxMate.Services;
 
 public sealed record GitHubDevicePrompt(string UserCode, string VerificationUri);
+public sealed record GitHubCredential(string AccessToken, string? RefreshToken, DateTimeOffset? ExpiresAt);
 
 public sealed class GitHubAuthService
 {
@@ -26,15 +27,70 @@ public sealed class GitHubAuthService
         .FirstOrDefault(attribute => attribute.Key == "GitHubClientId")?.Value?.Trim() ?? string.Empty;
 
     public string? LoadToken()
+        => LoadCredential()?.AccessToken;
+
+    public GitHubCredential? LoadCredential()
     {
         if (!File.Exists(TokenPath)) return null;
         try
         {
-            if (!OperatingSystem.IsWindows()) return File.ReadAllText(TokenPath).Trim();
-            var encrypted = File.ReadAllBytes(TokenPath);
-            return Encoding.UTF8.GetString(ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser));
+            string stored;
+            if (!OperatingSystem.IsWindows()) stored = File.ReadAllText(TokenPath).Trim();
+            else
+            {
+                var encrypted = File.ReadAllBytes(TokenPath);
+                stored = Encoding.UTF8.GetString(ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser));
+            }
+
+            if (string.IsNullOrWhiteSpace(stored)) return null;
+            if (stored.StartsWith('{'))
+                return JsonSerializer.Deserialize<GitHubCredential>(stored);
+
+            // Compatibility with BoxMate 1.3.2 and earlier, which stored only
+            // a long-lived access token.
+            return new GitHubCredential(stored, null, null);
         }
         catch { return null; }
+    }
+
+    public async Task<string?> GetValidAccessTokenAsync(CancellationToken cancellationToken = default)
+    {
+        var credential = LoadCredential();
+        if (credential is null) return null;
+        if (credential.ExpiresAt is null || credential.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(5))
+            return credential.AccessToken;
+        return await RefreshAccessTokenAsync(cancellationToken);
+    }
+
+    public async Task<string?> RefreshAccessTokenAsync(CancellationToken cancellationToken = default)
+    {
+        var credential = LoadCredential();
+        if (credential is null || string.IsNullOrWhiteSpace(credential.RefreshToken)) return null;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://github.com/login/oauth/access_token")
+        {
+            Content = new FormUrlEncodedContent([
+                new("client_id", ClientId),
+                new("grant_type", "refresh_token"),
+                new("refresh_token", credential.RefreshToken)])
+        };
+        using var response = await Client.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var result = JsonSerializer.Deserialize<TokenResponse>(await response.Content.ReadAsStringAsync(cancellationToken))
+            ?? throw new InvalidOperationException("GitHub returned an empty token-refresh response.");
+        if (string.IsNullOrWhiteSpace(result.AccessToken))
+        {
+            if (result.Error is "bad_refresh_token" or "incorrect_client_credentials")
+            {
+                SignOut();
+                return null;
+            }
+            throw new InvalidOperationException(result.ErrorDescription ?? $"GitHub token refresh failed: {result.Error}.");
+        }
+
+        var refreshed = CreateCredential(result);
+        SaveCredential(refreshed);
+        return refreshed.AccessToken;
     }
 
     public async Task<string> SignInAsync(Action<GitHubDevicePrompt> showPrompt, CancellationToken cancellationToken = default)
@@ -44,7 +100,9 @@ public sealed class GitHubAuthService
 
         using var deviceRequest = new HttpRequestMessage(HttpMethod.Post, "https://github.com/login/device/code")
         {
-            Content = new FormUrlEncodedContent([new("client_id", ClientId)])
+            Content = new FormUrlEncodedContent([
+                new("client_id", ClientId),
+                new("scope", "offline_access")])
         };
         using var deviceResponse = await Client.SendAsync(deviceRequest, cancellationToken);
         deviceResponse.EnsureSuccessStatusCode();
@@ -70,7 +128,7 @@ public sealed class GitHubAuthService
                 ?? throw new InvalidOperationException("GitHub returned an empty sign-in response.");
             if (!string.IsNullOrWhiteSpace(result.AccessToken))
             {
-                SaveToken(result.AccessToken);
+                SaveCredential(CreateCredential(result));
                 return result.AccessToken;
             }
             if (result.Error == "authorization_pending") continue;
@@ -87,16 +145,22 @@ public sealed class GitHubAuthService
         if (File.Exists(TokenPath)) File.Delete(TokenPath);
     }
 
-    private static void SaveToken(string token)
+    private static GitHubCredential CreateCredential(TokenResponse response) => new(
+        response.AccessToken!,
+        response.RefreshToken,
+        response.ExpiresIn is > 0 ? DateTimeOffset.UtcNow.AddSeconds(response.ExpiresIn.Value) : null);
+
+    private static void SaveCredential(GitHubCredential credential)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(TokenPath)!);
+        var serialized = JsonSerializer.Serialize(credential);
         if (OperatingSystem.IsWindows())
         {
-            var encrypted = ProtectedData.Protect(Encoding.UTF8.GetBytes(token), null, DataProtectionScope.CurrentUser);
+            var encrypted = ProtectedData.Protect(Encoding.UTF8.GetBytes(serialized), null, DataProtectionScope.CurrentUser);
             File.WriteAllBytes(TokenPath, encrypted);
             return;
         }
-        File.WriteAllText(TokenPath, token);
+        File.WriteAllText(TokenPath, serialized);
         File.SetUnixFileMode(TokenPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
@@ -120,6 +184,9 @@ public sealed class GitHubAuthService
     private sealed class TokenResponse
     {
         [JsonPropertyName("access_token")] public string? AccessToken { get; set; }
+        [JsonPropertyName("refresh_token")] public string? RefreshToken { get; set; }
+        [JsonPropertyName("expires_in")] public int? ExpiresIn { get; set; }
+        [JsonPropertyName("refresh_token_expires_in")] public int? RefreshTokenExpiresIn { get; set; }
         [JsonPropertyName("error")] public string? Error { get; set; }
         [JsonPropertyName("error_description")] public string? ErrorDescription { get; set; }
     }
