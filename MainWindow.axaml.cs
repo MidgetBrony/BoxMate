@@ -425,14 +425,22 @@ public partial class MainWindow : Window
     private async Task<bool> EnsureGitHubTokenFreshAsync()
     {
         if (string.IsNullOrWhiteSpace(_gitHubToken)) return false;
-        var hadToken = true;
-        var validToken = await _gitHubAuthService.GetValidAccessTokenAsync();
+        string? validToken;
+        try
+        {
+            validToken = await _gitHubAuthService.GetValidAccessTokenAsync();
+        }
+        catch
+        {
+            _gitHubAuthService.SignOut();
+            validToken = null;
+        }
         if (string.Equals(validToken, _gitHubToken, StringComparison.Ordinal)) return false;
 
         _gitHubToken = validToken;
         ApplyGitHubAuthentication();
         UpdateGitHubStatus();
-        return hadToken && string.IsNullOrWhiteSpace(validToken);
+        return string.IsNullOrWhiteSpace(validToken);
     }
 
     private void UpdateGitHubStatus()
