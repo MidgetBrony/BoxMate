@@ -38,6 +38,15 @@ public partial class MainWindow : Window
     private async void MainWindow_OnOpened(object? sender, EventArgs e)
     {
         _settings = await _settingsService.LoadAsync();
+        if (!ValidateGameFolder(_settings.GameFolder))
+        {
+            var detectedFolder = SteamGameLocator.FindBoxroomFolder();
+            if (detectedFolder is not null)
+            {
+                _settings.GameFolder = detectedFolder;
+                await _settingsService.SaveAsync(_settings);
+            }
+        }
         _gitHubToken = _gitHubAuthService.LoadToken();
         ApplyGitHubAuthentication();
         GameFolderBox.Text = _settings.GameFolder;
@@ -86,6 +95,24 @@ public partial class MainWindow : Window
         {
             GameFolderBox.Text = choices[0].Path.LocalPath;
             UpdateMelonLoaderStatus();
+            await SaveGameFolderAsync();
+        }
+    }
+
+    private async void GameFolderBox_OnLostFocus(object? sender, RoutedEventArgs e) =>
+        await SaveGameFolderAsync();
+
+    private async Task SaveGameFolderAsync()
+    {
+        ReadSettingsFromForm();
+        try
+        {
+            await _settingsService.SaveAsync(_settings);
+            RenderPackages();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not save the BOXROOM folder: {ex.Message}");
         }
     }
 
