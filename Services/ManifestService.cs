@@ -233,9 +233,6 @@ public sealed class ManifestService
             catch { cached = null; }
         }
 
-        if (cached is not null && DateTimeOffset.UtcNow - cached.SavedAt < TimeSpan.FromMinutes(15))
-            return cached.Release;
-
         using var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
         if (!string.IsNullOrWhiteSpace(GitHubToken))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
