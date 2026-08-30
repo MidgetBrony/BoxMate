@@ -4,6 +4,25 @@ namespace BoxMate.Services;
 
 public static class ManifestSourceHelper
 {
+    public static string NormalizeManifestIdentity(string value)
+    {
+        var uri = new Uri(value, UriKind.Absolute);
+        if (!uri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            return uri.AbsoluteUri;
+
+        var parts = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 4 && parts[3].Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
+        {
+            var builder = new UriBuilder(uri)
+            {
+                Path = $"/{parts[0]}/{parts[1]}/refs/heads/{parts[2]}/{parts[3]}"
+            };
+            return builder.Uri.AbsoluteUri;
+        }
+
+        return uri.AbsoluteUri;
+    }
+
     public static string NormalizeForStorage(string value)
     {
         value = value.Trim().TrimEnd('/');

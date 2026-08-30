@@ -131,24 +131,9 @@ public sealed class ManifestService
     private static string NormalizeManifestSource(string source, string description)
     {
         var uri = ValidateHttpsUrl(source, description);
-        if (!uri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
-            return uri.AbsoluteUri;
-
         // GitHub supports both /OWNER/REPO/BRANCH/manifest.json and
-        // /OWNER/REPO/refs/heads/BRANCH/manifest.json. Treat the legacy form as
-        // the same source so a catalogue entry and a dependency cannot load one
-        // manifest twice under different URLs.
-        var parts = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 4 && parts[3].Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
-        {
-            var builder = new UriBuilder(uri)
-            {
-                Path = $"/{parts[0]}/{parts[1]}/refs/heads/{parts[2]}/{parts[3]}"
-            };
-            return builder.Uri.AbsoluteUri;
-        }
-
-        return uri.AbsoluteUri;
+        // /OWNER/REPO/refs/heads/BRANCH/manifest.json. Treat both as one source.
+        return ManifestSourceHelper.NormalizeManifestIdentity(uri.AbsoluteUri);
     }
 
     private static async Task<ModManifest> DownloadManifestAsync(string url, CancellationToken cancellationToken)

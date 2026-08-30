@@ -91,7 +91,7 @@ public sealed class InstallationService
                 installedIds.Contains(package.Manifest.Id) &&
                 package.Manifest.Dependencies.Where(item => item.Required).Any(dependency =>
                     packages.FirstOrDefault(candidate => candidate.ManifestUrl.Equals(
-                        new Uri(dependency.Manifest).AbsoluteUri, StringComparison.OrdinalIgnoreCase))?.Manifest.Id
+                        ManifestSourceHelper.NormalizeManifestIdentity(dependency.Manifest), StringComparison.OrdinalIgnoreCase))?.Manifest.Id
                         .Equals(packageId, StringComparison.OrdinalIgnoreCase) == true));
             if (dependant is not null)
                 throw new InvalidOperationException($"{installed.Name} is required by installed mod {dependant.Manifest.Name}. Uninstall that mod first.");
@@ -116,7 +116,9 @@ public sealed class InstallationService
 
     private static List<ResolvedPackage> ResolveInstallOrder(IReadOnlyList<ResolvedPackage> packages, ResolvedPackage requested)
     {
-        var byUrl = packages.ToDictionary(item => item.ManifestUrl, StringComparer.OrdinalIgnoreCase);
+        var byUrl = packages.ToDictionary(
+            item => ManifestSourceHelper.NormalizeManifestIdentity(item.ManifestUrl),
+            StringComparer.OrdinalIgnoreCase);
         var result = new List<ResolvedPackage>();
         var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -125,7 +127,7 @@ public sealed class InstallationService
             if (visited.Contains(package.Manifest.Id)) return;
             if (!visiting.Add(package.Manifest.Id)) throw new InvalidOperationException($"Circular dependency detected at {package.Manifest.Name}.");
             foreach (var dependency in package.Manifest.Dependencies.Where(item => item.Required))
-                Visit(byUrl[new Uri(dependency.Manifest).AbsoluteUri]);
+                Visit(byUrl[ManifestSourceHelper.NormalizeManifestIdentity(dependency.Manifest)]);
             visiting.Remove(package.Manifest.Id);
             visited.Add(package.Manifest.Id);
             result.Add(package);
