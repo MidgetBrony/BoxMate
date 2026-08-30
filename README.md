@@ -86,7 +86,7 @@ Boxroom-Plus.zip
 └── UserData/BoxroomPlus/defaults.json
 ```
 
-For a ZIP whose contents are already rooted at `Mods`, `Plugins`, `UserLibs`, or `UserData`, omit `release.destination`. If a ZIP contains a root-level DLL, set `release.destination` to `Mods` and BoxMate will prepend it to every ZIP entry. For a single non-ZIP release asset, use a full destination such as `Mods/MyMod.dll`.
+For a ZIP whose contents are already rooted at `Mods`, `Plugins`, `UserLibs`, or `UserData`, omit `release.destination`. Unity native playback packages may also target the narrowly scoped `BOXROOM_Data/Plugins/x86_64` runtime directory. Other `BOXROOM_Data` destinations remain rejected. If a ZIP contains a root-level DLL, set `release.destination` to `Mods` and BoxMate will prepend it to every ZIP entry. For a single non-ZIP release asset, use a full destination such as `Mods/MyMod.dll`.
 
 BoxMate rejects absolute paths, traversal outside BOXROOM, unexpected root folders, invalid hashes, dependency cycles, duplicate package IDs, and unsupported release providers. Existing files are backed up, and a partially failed installation is rolled back.
 

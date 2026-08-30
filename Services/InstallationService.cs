@@ -19,6 +19,7 @@ public sealed class InstallationService
 {
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(10) };
     private static readonly string[] AllowedRoots = ["Mods", "Plugins", "UserLibs", "UserData"];
+    private static readonly string AllowedUnityNativeRoot = Path.Combine("BOXROOM_Data", "Plugins", "x86_64");
 
     public static bool IsTool(ResolvedPackage package) =>
         package.Manifest.Type.Equals("tool", StringComparison.OrdinalIgnoreCase);
@@ -243,7 +244,10 @@ public sealed class InstallationService
             throw new InvalidOperationException("Package destinations must be relative paths.");
         var normalized = relativeDestination.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
         var firstPart = normalized.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        if (!IsTool(package) && (firstPart is null || !AllowedRoots.Contains(firstPart, StringComparer.OrdinalIgnoreCase)))
+        bool allowedModRoot = firstPart is not null && AllowedRoots.Contains(firstPart, StringComparer.OrdinalIgnoreCase);
+        bool allowedUnityNativePath = normalized.Equals(AllowedUnityNativeRoot, StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith(AllowedUnityNativeRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        if (!IsTool(package) && !allowedModRoot && !allowedUnityNativePath)
             throw new InvalidOperationException($"Destination '{relativeDestination}' is outside BoxMate's allowed folders.");
         var root = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var destination = Path.GetFullPath(Path.Combine(root, normalized));
@@ -290,7 +294,8 @@ public sealed class InstallationService
     private static void RemoveEmptyParents(ResolvedPackage package, string installRoot, string filePath)
     {
         var root = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar);
-        var protectedRoots = (IsTool(package) ? [] : AllowedRoots.Select(name => Path.Combine(root, name)))
+        var protectedRoots = (IsTool(package) ? [] : AllowedRoots.Select(name => Path.Combine(root, name))
+                .Append(Path.Combine(root, AllowedUnityNativeRoot)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var directory = Path.GetDirectoryName(filePath);
         while (!string.IsNullOrWhiteSpace(directory) &&
