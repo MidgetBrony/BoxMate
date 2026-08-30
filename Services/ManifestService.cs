@@ -38,7 +38,7 @@ public sealed class ManifestService
 
         async Task VisitAsync(string manifestUrl, bool catalogueEntry = false)
         {
-            var sourceKey = ValidateHttpsUrl(manifestUrl, "manifest or repository").AbsoluteUri;
+            var sourceKey = NormalizeManifestSource(manifestUrl, "manifest or repository");
             if (!visiting.Add(sourceKey)) throw new InvalidOperationException($"Circular manifest dependency detected at {sourceKey}.");
 
             progress($"Reading {sourceKey}...");
@@ -94,7 +94,7 @@ public sealed class ManifestService
 
             foreach (var dependency in manifest.Dependencies.Where(item => item.Required && !string.IsNullOrWhiteSpace(item.MinimumVersion)))
             {
-                var dependencyUrl = ValidateHttpsUrl(dependency.Manifest, "dependency manifest").AbsoluteUri;
+                var dependencyUrl = NormalizeManifestSource(dependency.Manifest, "dependency manifest");
                 var target = resolved.Values.First(item => item.ManifestUrl.Equals(dependencyUrl, StringComparison.OrdinalIgnoreCase));
                 if (!VersionSatisfies(target.Version, dependency.MinimumVersion))
                     throw new InvalidOperationException($"{manifest.Name} requires {target.Manifest.Name} {dependency.MinimumVersion} or newer, but {target.Version} is available.");
@@ -126,6 +126,29 @@ public sealed class ManifestService
             catch (HttpRequestException exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound) { }
         }
         throw new InvalidOperationException($"No manifest.json was found at the root of {uri} on main or master.");
+    }
+
+    private static string NormalizeManifestSource(string source, string description)
+    {
+        var uri = ValidateHttpsUrl(source, description);
+        if (!uri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            return uri.AbsoluteUri;
+
+        // GitHub supports both /OWNER/REPO/BRANCH/manifest.json and
+        // /OWNER/REPO/refs/heads/BRANCH/manifest.json. Treat the legacy form as
+        // the same source so a catalogue entry and a dependency cannot load one
+        // manifest twice under different URLs.
+        var parts = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 4 && parts[3].Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
+        {
+            var builder = new UriBuilder(uri)
+            {
+                Path = $"/{parts[0]}/{parts[1]}/refs/heads/{parts[2]}/{parts[3]}"
+            };
+            return builder.Uri.AbsoluteUri;
+        }
+
+        return uri.AbsoluteUri;
     }
 
     private static async Task<ModManifest> DownloadManifestAsync(string url, CancellationToken cancellationToken)
