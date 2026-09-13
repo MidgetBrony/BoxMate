@@ -126,7 +126,7 @@
       </Border>
     </Grid>
 
-    <Border Grid.Row="2" Background="#151A24" Padding="24,12">
+    <Border x:Name="StatusBar" Grid.Row="2" Background="#151A24" Padding="24,12">
       <TextBlock x:Name="StatusText" Text="Ready" Foreground="{StaticResource MutedBrush}" />
     </Border>
   </Grid>

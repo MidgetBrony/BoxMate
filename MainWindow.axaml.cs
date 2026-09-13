@@ -456,7 +456,49 @@ public partial class MainWindow : Window
 
     private static bool ValidateGameFolder(string path) => Directory.Exists(path) &&
         (File.Exists(Path.Combine(path, "BOXROOM.exe")) || Directory.Exists(Path.Combine(path, "MelonLoader")));
-    private void SetStatus(string message) => StatusText.Text = message;
+    private void SetStatus(string message)
+    {
+        StatusText.Text = message;
+        var severity = GetStatusSeverity(message);
+        (string foreground, string background) = severity switch
+        {
+            StatusSeverity.Error => ("#FF7B86", "#351B24"),
+            StatusSeverity.Warning => ("#F3C969", "#342B19"),
+            StatusSeverity.Success => ("#70D6B2", "#173029"),
+            _ => ("#94A0B5", "#151A24")
+        };
+        StatusText.Foreground = new SolidColorBrush(Color.Parse(foreground));
+        StatusText.FontWeight = severity == StatusSeverity.Normal ? FontWeight.Normal : FontWeight.SemiBold;
+        StatusBar.Background = new SolidColorBrush(Color.Parse(background));
+    }
+
+    private static StatusSeverity GetStatusSeverity(string message)
+    {
+        if (message.StartsWith("Error:", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Could not", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains(" failed", StringComparison.OrdinalIgnoreCase))
+            return StatusSeverity.Error;
+
+        if (message.StartsWith("Choose ", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("unavailable", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("expired", StringComparison.OrdinalIgnoreCase))
+            return StatusSeverity.Warning;
+
+        if (message.StartsWith("Installed ", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Reinstalled ", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Uninstalled ", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Opened ", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Copied ", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Signed ", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Manifests and GitHub releases refreshed", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Update ready", StringComparison.OrdinalIgnoreCase))
+            return StatusSeverity.Success;
+
+        return StatusSeverity.Normal;
+    }
+
+    private enum StatusSeverity { Normal, Success, Warning, Error }
 
     private async Task<bool> ConfirmAsync(string title, string message)
     {
