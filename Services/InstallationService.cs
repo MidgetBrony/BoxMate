@@ -56,7 +56,8 @@ public sealed class InstallationService
 
     public async Task<IReadOnlyList<string>> InstallPackageAsync(
         IReadOnlyList<ResolvedPackage> packages, string packageId, string gameRoot,
-        Action<string> progress, CancellationToken cancellationToken = default)
+        Action<string> progress, CancellationToken cancellationToken = default,
+        bool forceRequestedPackage = false)
     {
         var requested = packages.FirstOrDefault(item => item.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"Package '{packageId}' was not found.");
@@ -64,7 +65,8 @@ public sealed class InstallationService
         var completed = new List<string>();
         foreach (var package in order)
         {
-            if (GetPackageStatus(package, gameRoot) == PackageInstallStatus.Current) continue;
+            if (GetPackageStatus(package, gameRoot) == PackageInstallStatus.Current &&
+                (!forceRequestedPackage || !package.Manifest.Id.Equals(requested.Manifest.Id, StringComparison.OrdinalIgnoreCase))) continue;
             progress($"Installing {package.Manifest.Name}...");
             var files = await InstallOneAsync(package, gameRoot, progress, cancellationToken);
             RecordInstalled(package, files, gameRoot);

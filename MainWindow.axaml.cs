@@ -237,6 +237,7 @@ public partial class MainWindow : Window
             SetStatus("Choose a valid BOXROOM folder before installing.");
             return;
         }
+        var reinstall = _installationService.GetPackageStatus(requested, _settings.GameFolder) == PackageInstallStatus.Current;
         await RunBusyAsync(async () =>
         {
             var needsMelonLoader = !InstallationService.IsTool(requested) &&
@@ -251,8 +252,11 @@ public partial class MainWindow : Window
             SetStatus("Resolving required mods...");
             var installed = await _installationService.InstallPackageAsync(
                 _packages, packageId, _settings.GameFolder,
-                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
-            SetStatus(installed.Count == 0 ? "Everything is already current." : $"Installed {string.Join(", ", installed)}.");
+                message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)),
+                forceRequestedPackage: reinstall);
+            SetStatus(reinstall
+                ? $"Reinstalled {requested.Manifest.Name}."
+                : installed.Count == 0 ? "Everything is already current." : $"Installed {string.Join(", ", installed)}.");
             RenderPackages();
         });
     }
@@ -539,13 +543,13 @@ public sealed class PackageCard
                 PackageInstallStatus.NotConfigured => isTool ? "Ready to install" : "Choose your BOXROOM folder",
                 _ => "Not installed"
             },
-            ActionLabel = status == PackageInstallStatus.Current ? "Installed" : status == PackageInstallStatus.Outdated ? "Update" : status == PackageInstallStatus.Modified ? "Repair" : "Install",
+            ActionLabel = status == PackageInstallStatus.Current ? "Reinstall" : status == PackageInstallStatus.Outdated ? "Update" : status == PackageInstallStatus.Modified ? "Repair" : "Install",
             CardBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#3A2026" : "#242B39")),
             NameBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#F3F5F8")),
             BadgeBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#7A2933" : "#314238")),
             StatusBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#70D6B2")),
             ShowInstallAction = !package.IsDeprecated,
-            CanInstall = !package.IsDeprecated && status is not (PackageInstallStatus.Current or PackageInstallStatus.NotConfigured),
+            CanInstall = !package.IsDeprecated && status is not PackageInstallStatus.NotConfigured,
             CanUninstall = package.IsDeprecated || status is PackageInstallStatus.Current or PackageInstallStatus.Outdated or PackageInstallStatus.Modified,
             CanLaunch = isTool && status is PackageInstallStatus.Current,
             IsTool = isTool
