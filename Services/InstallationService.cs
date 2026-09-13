@@ -173,7 +173,11 @@ public sealed class InstallationService
                 {
                     var archiveRelative = entry.FullName.Replace('\\', '/').TrimStart('/');
                     var prefix = package.Manifest.Release.Destination?.Replace('\\', '/').Trim('/') ?? string.Empty;
-                    var relative = string.IsNullOrWhiteSpace(prefix) ? archiveRelative : $"{prefix}/{archiveRelative}";
+                    var relative = string.IsNullOrWhiteSpace(prefix) ||
+                                   archiveRelative.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
+                                   archiveRelative.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase)
+                        ? archiveRelative
+                        : $"{prefix}/{archiveRelative}";
                     var destination = GetSafeDestination(package, installRoot, relative);
                     var staged = Path.GetFullPath(Path.Combine(stageRoot, archiveRelative.Replace('/', Path.DirectorySeparatorChar)));
                     var stagePrefix = Path.GetFullPath(stageRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
