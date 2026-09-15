@@ -35,6 +35,7 @@ public sealed class ManifestService
     {
         var resolved = new Dictionary<string, ResolvedPackage>(StringComparer.OrdinalIgnoreCase);
         var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sourceAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         async Task VisitAsync(string manifestUrl, bool catalogueEntry = false, bool experimental = false)
         {
@@ -43,6 +44,8 @@ public sealed class ManifestService
 
             progress($"Reading {sourceKey}...");
             var (normalized, manifest) = await LoadManifestSourceAsync(sourceKey, cancellationToken);
+            sourceAliases[sourceKey] = normalized;
+            sourceAliases[normalized] = normalized;
             var alreadyResolved = resolved.Values.FirstOrDefault(package => package.ManifestUrl.Equals(normalized, StringComparison.OrdinalIgnoreCase));
             if (alreadyResolved is not null)
             {
@@ -97,7 +100,11 @@ public sealed class ManifestService
             foreach (var dependency in manifest.Dependencies.Where(item => item.Required && !string.IsNullOrWhiteSpace(item.MinimumVersion)))
             {
                 var dependencyUrl = NormalizeManifestSource(dependency.Manifest, "dependency manifest");
-                var target = resolved.Values.First(item => item.ManifestUrl.Equals(dependencyUrl, StringComparison.OrdinalIgnoreCase));
+                var resolvedDependencyUrl = sourceAliases.GetValueOrDefault(dependencyUrl, dependencyUrl);
+                var target = resolved.Values.FirstOrDefault(item =>
+                    item.ManifestUrl.Equals(resolvedDependencyUrl, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new InvalidOperationException(
+                        $"{manifest.Name} requires a dependency that could not be resolved from '{dependency.Manifest}'.");
                 if (!VersionSatisfies(target.Version, dependency.MinimumVersion))
                     throw new InvalidOperationException($"{manifest.Name} requires {target.Manifest.Name} {dependency.MinimumVersion} or newer, but {target.Version} is available.");
             }
