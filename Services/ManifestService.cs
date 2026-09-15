@@ -36,7 +36,7 @@ public sealed class ManifestService
         var resolved = new Dictionary<string, ResolvedPackage>(StringComparer.OrdinalIgnoreCase);
         var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        async Task VisitAsync(string manifestUrl, bool catalogueEntry = false)
+        async Task VisitAsync(string manifestUrl, bool catalogueEntry = false, bool experimental = false)
         {
             var sourceKey = NormalizeManifestSource(manifestUrl, "manifest or repository");
             if (!visiting.Add(sourceKey)) throw new InvalidOperationException($"Circular manifest dependency detected at {sourceKey}.");
@@ -47,6 +47,7 @@ public sealed class ManifestService
             if (alreadyResolved is not null)
             {
                 alreadyResolved.IsCatalogueEntry |= catalogueEntry;
+                alreadyResolved.Manifest.Experimental |= experimental;
                 visiting.Remove(sourceKey);
                 return;
             }
@@ -54,7 +55,7 @@ public sealed class ManifestService
             if (manifest.Type.Equals("collection", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (var member in manifest.Mods)
-                    await VisitAsync(NormalizeCollectionRepository(member.Repository), true);
+                    await VisitAsync(NormalizeCollectionRepository(member.Repository), true, member.Experimental);
                 foreach (var deprecated in manifest.DeprecatedMods)
                 {
                     var deprecatedId = GetDeprecatedId(deprecated);
@@ -86,6 +87,7 @@ public sealed class ManifestService
             foreach (var dependency in manifest.Dependencies.Where(item => item.Required))
                 await VisitAsync(dependency.Manifest);
 
+            manifest.Experimental |= experimental;
             var package = await ResolveReleaseAsync(manifest, normalized, cancellationToken);
             package.IsCatalogueEntry = catalogueEntry;
             if (resolved.TryGetValue(manifest.Id, out var existing) &&

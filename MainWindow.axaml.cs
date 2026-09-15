@@ -550,6 +550,7 @@ public sealed class PackageCard
     public bool CanUninstall { get; init; }
     public bool CanLaunch { get; init; }
     public bool IsTool { get; init; }
+    public bool IsExperimental { get; init; }
 
     public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status, string recordedVersion,
         IReadOnlyCollection<ResolvedPackage> allPackages)
@@ -586,7 +587,8 @@ public sealed class PackageCard
                 _ => "Not installed"
             },
             ActionLabel = status == PackageInstallStatus.Current ? "Reinstall" : status == PackageInstallStatus.Outdated ? "Update" : status == PackageInstallStatus.Modified ? "Repair" : "Install",
-            CardBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#3A2026" : "#242B39")),
+            IsExperimental = manifest.Experimental,
+            CardBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#3A2026" : manifest.Experimental ? "#352344" : "#242B39")),
             NameBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#F3F5F8")),
             BadgeBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#7A2933" : "#314238")),
             StatusBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#70D6B2")),

@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "experimental": false,
   "id": "boxroom-plus",
   "name": "BOXROOM Plus",
   "author": "MidgetBrony",

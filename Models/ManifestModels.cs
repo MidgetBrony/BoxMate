@@ -5,6 +5,7 @@ namespace BoxMate.Models;
 
 public sealed class ModManifest
 {
+    [JsonPropertyName("experimental")] public bool Experimental { get; set; }
     [JsonPropertyName("schemaVersion")] public int SchemaVersion { get; set; }
     [JsonPropertyName("type")] public string Type { get; set; } = "mod";
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
@@ -30,6 +31,7 @@ public sealed class DeprecatedMod
 
 public sealed class CollectionMod
 {
+    [JsonPropertyName("experimental")] public bool Experimental { get; set; }
     [JsonPropertyName("repository")] public string Repository { get; set; } = string.Empty;
     [JsonPropertyName("recommended")] public bool Recommended { get; set; }
 }

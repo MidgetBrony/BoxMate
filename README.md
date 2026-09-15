@@ -168,3 +168,9 @@ To make self-contained builds that do not require .NET to be installed:
 dotnet publish BoxMate.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 dotnet publish BoxMate.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true
 ```
+
+### Experimental projects
+
+Set `"experimental": true` in a mod or tool manifest, or on its entry in a collection's `mods` array. BoxMate displays a purple card, an EXPERIMENTAL badge, and a warning icon with: "May break or behave unexpectedly. Features can change between updates."
+
+The flag defaults to false. A true flag from either the project manifest or a collection enables the warning, including when the project was already resolved as a dependency. Deprecated projects retain their red card and unsupported status.
