@@ -54,8 +54,8 @@ public partial class MainWindow : Window
         UpdateMelonLoaderStatus();
         UpdateGitHubStatus();
         LinuxSetupPanel.IsVisible = OperatingSystem.IsLinux();
-        await RefreshManifestsAsync();
         await CheckForBoxMateUpdateAsync();
+        await RefreshManifestsAsync();
     }
 
     private async void RefreshButton_OnClick(object? sender, RoutedEventArgs e) => await RefreshManifestsAsync();
@@ -338,7 +338,9 @@ public partial class MainWindow : Window
             }
             await _settingsService.SaveAsync(_settings);
             RenderPackages();
-            SetStatus(authenticationWasCleared
+            SetStatus(_manifestService.LastWarnings.Count > 0
+                ? $"Catalogue refreshed with {_manifestService.LastWarnings.Count} unavailable entr{(_manifestService.LastWarnings.Count == 1 ? "y" : "ies")}. Other projects and BoxMate updates remain available."
+                : authenticationWasCleared
                 ? "GitHub sign-in expired and could not be renewed. Catalogue refreshed anonymously; sign in again to restore the higher limit."
                 : "Manifests and GitHub releases refreshed.");
         });

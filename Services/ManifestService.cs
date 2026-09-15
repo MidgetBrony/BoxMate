@@ -22,6 +22,7 @@ public sealed class ManifestService
 {
     private static readonly HttpClient Client = CreateClient();
     private static string? GitHubToken;
+    public IReadOnlyList<string> LastWarnings { get; private set; } = [];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -36,6 +37,7 @@ public sealed class ManifestService
         var resolved = new Dictionary<string, ResolvedPackage>(StringComparer.OrdinalIgnoreCase);
         var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sourceAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var warnings = new List<string>();
 
         async Task VisitAsync(string manifestUrl, bool catalogueEntry = false, bool experimental = false)
         {
@@ -58,7 +60,20 @@ public sealed class ManifestService
             if (manifest.Type.Equals("collection", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (var member in manifest.Mods)
-                    await VisitAsync(NormalizeCollectionRepository(member.Repository), true, member.Experimental);
+                {
+                    var activeBeforeMember = visiting.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    try
+                    {
+                        await VisitAsync(NormalizeCollectionRepository(member.Repository), true, member.Experimental);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException and not GitHubAuthenticationException)
+                    {
+                        visiting.IntersectWith(activeBeforeMember);
+                        var warning = $"{member.Repository}: {ex.Message}";
+                        warnings.Add(warning);
+                        progress($"Skipped unavailable catalogue entry {warning}");
+                    }
+                }
                 foreach (var deprecated in manifest.DeprecatedMods)
                 {
                     var deprecatedId = GetDeprecatedId(deprecated);
@@ -116,6 +131,7 @@ public sealed class ManifestService
         foreach (var root in roots.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase))
             await VisitAsync(root.Trim());
 
+        LastWarnings = warnings;
         return resolved.Values.ToList();
     }
 
