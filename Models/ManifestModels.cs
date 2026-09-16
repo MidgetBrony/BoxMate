@@ -70,6 +70,7 @@ public sealed class ResolvedPackage
     public required string DownloadUrl { get; init; }
     public required string AssetName { get; init; }
     public required string Sha256 { get; init; }
+    public string ReleaseChannel { get; init; } = "Stable";
     public bool IsCatalogueEntry { get; set; }
     public bool IsDeprecated { get; init; }
     public string Replacement { get; init; } = string.Empty;
@@ -79,6 +80,7 @@ public sealed class BoxMateSettings
 {
     public string GameFolder { get; set; } = string.Empty;
     public List<string> ManifestUrls { get; set; } = [];
+    public Dictionary<string, string> PackageChannels { get; set; } = new(System.StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class InstalledState

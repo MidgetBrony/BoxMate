@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private BoxMateUpdate? _availableUpdate;
     private BoxMateSettings _settings = new();
     private IReadOnlyList<ResolvedPackage> _packages = [];
+    private bool _renderingPackages;
 
     public MainWindow()
     {
@@ -59,6 +60,40 @@ public partial class MainWindow : Window
     }
 
     private async void RefreshButton_OnClick(object? sender, RoutedEventArgs e) => await RefreshManifestsAsync();
+
+    private async void SettingsButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        ReadSettingsFromForm();
+        var dialog = new SettingsWindow(_settings, _packages);
+        var updated = await dialog.ShowDialog<BoxMateSettings?>(this);
+        if (updated is null) return;
+        var refresh = !_settings.ManifestUrls.SequenceEqual(updated.ManifestUrls, StringComparer.OrdinalIgnoreCase) ||
+            !ChannelsMatch(_settings.PackageChannels, updated.PackageChannels);
+        _settings = updated;
+        GameFolderBox.Text = _settings.GameFolder;
+        await _settingsService.SaveAsync(_settings);
+        UpdateSourceSummary();
+        UpdateMelonLoaderStatus();
+        RenderPackages();
+        if (refresh) await RefreshManifestsAsync();
+    }
+
+    private static bool ChannelsMatch(IReadOnlyDictionary<string, string> left, IReadOnlyDictionary<string, string> right) =>
+        left.Count == right.Count && left.All(pair => right.TryGetValue(pair.Key, out var value) &&
+            ReleaseChannels.Normalize(value) == ReleaseChannels.Normalize(pair.Value));
+
+    private async void PackageChannel_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_renderingPackages || sender is not ComboBox { Tag: string packageId, SelectedItem: string selected }) return;
+        _settings.PackageChannels ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var channel = ReleaseChannels.Normalize(selected);
+        if (ReleaseChannels.ForPackage(_settings, packageId) == channel) return;
+        if (channel == "Stable") _settings.PackageChannels.Remove(packageId);
+        else _settings.PackageChannels[packageId] = channel;
+        await _settingsService.SaveAsync(_settings);
+        RenderPackages();
+        await RefreshManifestsAsync();
+    }
 
     private void LaunchBoxroomButton_OnClick(object? sender, RoutedEventArgs e)
     {
@@ -348,7 +383,7 @@ public partial class MainWindow : Window
 
     private Task<IReadOnlyList<ResolvedPackage>> ResolvePackagesAsync(IEnumerable<string> sources) =>
         _manifestService.ResolveAllAsync(sources,
-            message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+            message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)), _settings.PackageChannels);
 
     private async Task CheckForBoxMateUpdateAsync()
     {
@@ -384,8 +419,10 @@ public partial class MainWindow : Window
                 ? _installationService.GetPackageStatus(package, _settings.GameFolder)
                 : PackageInstallStatus.NotConfigured,
                 InstallationService.IsTool(package) || validRoot ? _installationService.GetRecordedVersion(package, _settings.GameFolder) : string.Empty,
-                _packages)).ToList();
+                _packages, ReleaseChannels.ForPackage(_settings, package.Manifest.Id))).ToList();
+        _renderingPackages = true;
         PackageList.ItemsSource = cards;
+        _renderingPackages = false;
         var toolCount = cards.Count(card => card.IsTool);
         var modCount = cards.Count - toolCount;
         ManifestSummaryText.Text = $"{modCount} mod{(modCount == 1 ? string.Empty : "s")} · {toolCount} tool{(toolCount == 1 ? string.Empty : "s")}";
@@ -553,9 +590,14 @@ public sealed class PackageCard
     public bool CanLaunch { get; init; }
     public bool IsTool { get; init; }
     public bool IsExperimental { get; init; }
+    public bool IsEarlyChannel { get; init; }
+    public bool ShowChannelOption { get; init; }
+    public IReadOnlyList<string> ChannelOptions => ReleaseChannels.Choices;
+    public required string SelectedChannel { get; init; }
+    public required string AvailableChannelLabel { get; init; }
 
     public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status, string recordedVersion,
-        IReadOnlyCollection<ResolvedPackage> allPackages)
+        IReadOnlyCollection<ResolvedPackage> allPackages, string selectedChannel)
     {
         var manifest = package.Manifest;
         var isTool = InstallationService.IsTool(package);
@@ -589,8 +631,12 @@ public sealed class PackageCard
                 _ => "Not installed"
             },
             ActionLabel = status == PackageInstallStatus.Current ? "Reinstall" : status == PackageInstallStatus.Outdated ? "Update" : status == PackageInstallStatus.Modified ? "Repair" : "Install",
+            SelectedChannel = selectedChannel,
+            AvailableChannelLabel = selectedChannel == package.ReleaseChannel ? string.Empty : $"Using {package.ReleaseChannel}",
+            ShowChannelOption = !package.IsDeprecated,
             IsExperimental = manifest.Experimental,
-            CardBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#3A2026" : manifest.Experimental ? "#352344" : "#242B39")),
+            IsEarlyChannel = package.ReleaseChannel != "Stable",
+            CardBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#3A2026" : manifest.Experimental || package.ReleaseChannel != "Stable" ? "#352344" : "#242B39")),
             NameBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#F3F5F8")),
             BadgeBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#7A2933" : "#314238")),
             StatusBrush = new SolidColorBrush(Color.Parse(package.IsDeprecated ? "#FF7B86" : "#70D6B2")),

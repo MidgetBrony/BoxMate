@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -18,13 +19,25 @@ public sealed class SettingsService
             return new BoxMateSettings();
 
         await using var stream = File.OpenRead(SettingsPath);
-        return await JsonSerializer.DeserializeAsync<BoxMateSettings>(stream) ?? new BoxMateSettings();
+        var settings = await JsonSerializer.DeserializeAsync<BoxMateSettings>(stream) ?? new BoxMateSettings();
+        settings.ManifestUrls ??= [];
+        settings.PackageChannels = new Dictionary<string, string>(settings.PackageChannels ?? [], StringComparer.OrdinalIgnoreCase);
+        return settings;
     }
 
     public async Task SaveAsync(BoxMateSettings settings)
     {
         Directory.CreateDirectory(SettingsDirectory);
-        await using var stream = File.Create(SettingsPath);
-        await JsonSerializer.SerializeAsync(stream, settings, new JsonSerializerOptions { WriteIndented = true });
+        var temporaryPath = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var stream = File.Create(temporaryPath))
+                await JsonSerializer.SerializeAsync(stream, settings, new JsonSerializerOptions { WriteIndented = true });
+            File.Move(temporaryPath, SettingsPath, true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
     }
 }

@@ -2,6 +2,10 @@
 
 BoxMate is a Windows and Linux/Steam Deck manager for BOXROOM mods and companion tools. The official [`MidgetBrony/BoxMate-Mods`](https://github.com/MidgetBrony/BoxMate-Mods) catalogue is built in, so generally available mods plus BR-QImport and Boxroom Studio appear on first launch without setup. Companion tools install separately in the current user's BoxMate data folder and do not require a BOXROOM folder. BoxMate checks their latest GitHub release on refresh, offers **Update** or **Repair** when needed, and provides an **Open** button after installation.
 
+Each package has a **Release channel** choice, also available in **Settings**. Stable is the default. Beta accepts Stable and Beta releases; Alpha also accepts Alpha; Experimental accepts all published release channels. BoxMate chooses the newest compatible version allowed by that package's choice and falls back to Stable when no early release is available. Channels are saved per package in BoxMate's settings. The purple Experimental project warning is separate from the release channel: an experimental project can still publish a stable release.
+
+Package publishers can offer early builds as GitHub prereleases with version tags such as `v2.0.0-beta.1`, `v2.0.0-alpha.1`, or `v2.0.0-experimental.1`. Other prerelease labels are treated as Experimental. Each release needs the assets and SHA-256 digest or checksum file required by its manifest. These choices select published releases; they do not build from Git branches.
+
 Add `OWNER/REPOSITORY` or a repository link for anything outside the catalogue, choose the BOXROOM folder for mods, refresh, and install. BoxMate finds `manifest.json` at the repository root on `main` or `master`; required repositories are discovered and installed automatically. Existing raw manifest links remain supported for compatibility.
 
 The BOXROOM setup panel can open the selected game's `Mods` folder or `MelonLoader/Latest.log` directly. The Mods folder is created when missing. `Latest.log` becomes available after BOXROOM has launched through MelonLoader at least once.

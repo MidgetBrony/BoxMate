@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:BoxMate"
+        x:Class="BoxMate.SettingsWindow"
+        Width="720" Height="650" MinWidth="600" MinHeight="500"
+        Title="BoxMate Settings" WindowStartupLocation="CenterOwner" Background="#10131A">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+    <StackPanel Spacing="4">
+      <TextBlock Text="SETTINGS" FontSize="25" FontWeight="Bold" Foreground="#70D6B2" />
+      <TextBlock Text="Manage BOXROOM setup and the release channel for each package." Foreground="#94A0B5" />
+    </StackPanel>
+
+    <ScrollViewer Grid.Row="1" Margin="0,22,0,18">
+      <StackPanel Spacing="18">
+        <Border Background="#191E29" CornerRadius="10" Padding="18">
+          <StackPanel Spacing="9">
+            <TextBlock Text="BOXROOM folder" FontSize="17" FontWeight="SemiBold" />
+            <TextBlock Text="The folder containing BOXROOM.exe. Tools can install without this." Foreground="#94A0B5" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <TextBox x:Name="GameFolderBox" PlaceholderText="Choose the BOXROOM folder" />
+              <Button Grid.Column="1" Content="Browse" Click="BrowseButton_OnClick" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Background="#191E29" CornerRadius="10" Padding="18">
+          <StackPanel Spacing="9">
+            <TextBlock Text="Repositories" FontSize="17" FontWeight="SemiBold" />
+            <TextBlock x:Name="SourceSummaryText" Foreground="#94A0B5" />
+            <Button Content="Manage repositories" HorizontalAlignment="Left" Click="ManageSourcesButton_OnClick" />
+          </StackPanel>
+        </Border>
+
+        <Border Background="#191E29" CornerRadius="10" Padding="18">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Package release channels" FontSize="17" FontWeight="SemiBold" />
+            <TextBlock Text="Stable is the default. Beta, Alpha, and Experimental also allow releases from safer channels. Early releases may break. If none is available, BoxMate uses Stable."
+                       Foreground="#94A0B5" TextWrapping="Wrap" />
+            <ItemsControl x:Name="ChannelList">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:ChannelSettingRow">
+                  <Grid ColumnDefinitions="*,Auto" Margin="0,5,0,5">
+                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0" />
+                    <ComboBox Grid.Column="1" Width="155" ItemsSource="{Binding Choices}"
+                              SelectedItem="{Binding SelectedChannel}" Tag="{Binding Id}"
+                              SelectionChanged="Channel_OnSelectionChanged" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock x:Name="NoPackagesText" Text="Refresh the catalogue to show package channels."
+                       Foreground="#94A0B5" IsVisible="False" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+      <Button Content="Cancel" MinWidth="100" Click="CancelButton_OnClick" />
+      <Button Content="Save settings" MinWidth="120" Click="SaveButton_OnClick" />
+    </StackPanel>
+  </Grid>
+</Window>

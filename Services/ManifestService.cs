@@ -32,7 +32,8 @@ public sealed class ManifestService
         string.IsNullOrWhiteSpace(token) ? null : token;
 
     public async Task<IReadOnlyList<ResolvedPackage>> ResolveAllAsync(
-        IEnumerable<string> roots, Action<string> progress, CancellationToken cancellationToken = default)
+        IEnumerable<string> roots, Action<string> progress,
+        IReadOnlyDictionary<string, string>? packageChannels = null, CancellationToken cancellationToken = default)
     {
         var resolved = new Dictionary<string, ResolvedPackage>(StringComparer.OrdinalIgnoreCase);
         var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -106,7 +107,9 @@ public sealed class ManifestService
                 await VisitAsync(dependency.Manifest);
 
             manifest.Experimental |= experimental;
-            var package = await ResolveReleaseAsync(manifest, normalized, cancellationToken);
+            var channel = packageChannels is not null && packageChannels.TryGetValue(manifest.Id, out var selected)
+                ? ReleaseChannels.Normalize(selected) : "Stable";
+            var package = await ResolveReleaseAsync(manifest, normalized, channel, cancellationToken);
             package.IsCatalogueEntry = catalogueEntry;
             if (resolved.TryGetValue(manifest.Id, out var existing) &&
                 !existing.ManifestUrl.Equals(normalized, StringComparison.OrdinalIgnoreCase))
@@ -187,7 +190,8 @@ public sealed class ManifestService
         return manifest;
     }
 
-    private static async Task<ResolvedPackage> ResolveReleaseAsync(ModManifest manifest, string manifestUrl, CancellationToken cancellationToken)
+    private static async Task<ResolvedPackage> ResolveReleaseAsync(ModManifest manifest, string manifestUrl,
+        string channel, CancellationToken cancellationToken)
     {
         if (!manifest.Release.Provider.Equals("github", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"{manifest.Name} uses unsupported release provider '{manifest.Release.Provider}'.");
@@ -199,17 +203,23 @@ public sealed class ManifestService
         if (parts.Length != 2) throw new InvalidOperationException($"{manifest.Name} has an invalid GitHub repository URL.");
 
         var apiUrl = $"https://api.github.com/repos/{Uri.EscapeDataString(parts[0])}/{Uri.EscapeDataString(parts[1])}/releases/latest";
-        var release = await LoadGitHubReleaseAsync(apiUrl, manifest.Name, cancellationToken);
         var assetPattern = OperatingSystem.IsWindows()
             ? manifest.Release.AssetWindows ?? manifest.Release.Asset
             : manifest.Release.AssetLinux ?? manifest.Release.Asset;
         if (string.IsNullOrWhiteSpace(assetPattern))
             throw new InvalidOperationException($"{manifest.Name} does not publish an asset for this operating system.");
+        var release = channel == "Stable"
+            ? await LoadGitHubReleaseAsync(apiUrl, manifest.Name, cancellationToken)
+            : await SelectReleaseAsync(apiUrl[..^"/latest".Length], manifest.Name, channel,
+                assetPattern, manifest.Release.ChecksumAsset, cancellationToken);
+        if (channel == "Stable" && ReleaseChannels.Classify(release.TagName, release.Prerelease) != "Stable")
+            release = await SelectReleaseAsync(apiUrl[..^"/latest".Length], manifest.Name, channel,
+                assetPattern, manifest.Release.ChecksumAsset, cancellationToken);
         var matchingAssets = release.Assets.Where(item => AssetMatches(item.Name, assetPattern)).ToList();
         if (matchingAssets.Count == 0)
-            throw new InvalidOperationException($"Latest {manifest.Name} release does not contain an asset matching '{assetPattern}'.");
+            throw new InvalidOperationException($"Selected {manifest.Name} {channel} release does not contain an asset matching '{assetPattern}'.");
         if (matchingAssets.Count > 1)
-            throw new InvalidOperationException($"Latest {manifest.Name} release contains more than one asset matching '{assetPattern}'. Use a more specific pattern.");
+            throw new InvalidOperationException($"Selected {manifest.Name} release contains more than one asset matching '{assetPattern}'. Use a more specific pattern.");
         var asset = matchingAssets[0];
 
         var sha256 = ParseDigest(asset.Digest);
@@ -229,8 +239,41 @@ public sealed class ManifestService
             Version = release.TagName.TrimStart('v', 'V'),
             DownloadUrl = asset.BrowserDownloadUrl,
             AssetName = asset.Name,
-            Sha256 = sha256
+            Sha256 = sha256,
+            ReleaseChannel = ReleaseChannels.Classify(release.TagName, release.Prerelease)
         };
+    }
+
+    private static async Task<GitHubRelease> SelectReleaseAsync(string releasesUrl, string packageName,
+        string selectedChannel, string assetPattern, string? checksumAsset, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, releasesUrl + "?per_page=100");
+        if (!string.IsNullOrWhiteSpace(GitHubToken))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
+        using var response = await Client.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            throw new GitHubAuthenticationException($"GitHub rejected the saved sign-in while reading {packageName}.");
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Could not read {packageName} release channels: {(int)response.StatusCode} {response.ReasonPhrase}.");
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var releases = await JsonSerializer.DeserializeAsync<List<GitHubRelease>>(stream, JsonOptions, cancellationToken) ?? [];
+        return releases
+            .Where(item => !item.Draft && !string.IsNullOrWhiteSpace(item.TagName) &&
+                ReleaseChannels.Rank(ReleaseChannels.Classify(item.TagName, item.Prerelease)) <= ReleaseChannels.Rank(selectedChannel) &&
+                item.Assets.Count(asset => AssetMatches(asset.Name, assetPattern)) == 1 &&
+                (item.Assets.Any(asset => ParseDigest(asset.Digest) is not null && AssetMatches(asset.Name, assetPattern)) ||
+                 item.Assets.Any(asset => asset.Name.Equals(checksumAsset, StringComparison.OrdinalIgnoreCase))))
+            .OrderByDescending(item => ParseReleaseVersion(item.TagName))
+            .ThenBy(item => ReleaseChannels.Rank(ReleaseChannels.Classify(item.TagName, item.Prerelease)))
+            .ThenByDescending(item => item.PublishedAt)
+            .FirstOrDefault() ?? throw new InvalidOperationException($"No {selectedChannel} or safer release with a compatible download is available for {packageName}.");
+    }
+
+    private static Version ParseReleaseVersion(string tag)
+    {
+        var match = Regex.Match(tag, @"^v?(\d+(?:\.\d+){0,3})", RegexOptions.IgnoreCase);
+        return match.Success && Version.TryParse(match.Groups[1].Value, out var version) ? version : new Version(0, 0);
     }
 
     private static async Task<string> ReadChecksumAsync(string url, string assetName, CancellationToken cancellationToken)
@@ -372,9 +415,17 @@ public sealed class ManifestService
         return uri;
     }
 
-    private static bool VersionSatisfies(string available, string? minimum) =>
-        string.IsNullOrWhiteSpace(minimum) ||
-        (Version.TryParse(available, out var availableVersion) && Version.TryParse(minimum.TrimStart('v', 'V'), out var minimumVersion) && availableVersion >= minimumVersion);
+    private static bool VersionSatisfies(string available, string? minimum)
+    {
+        if (string.IsNullOrWhiteSpace(minimum)) return true;
+        var availableMatch = Regex.Match(available, @"^v?(\d+(?:\.\d+){0,3})(.*)$", RegexOptions.IgnoreCase);
+        var minimumMatch = Regex.Match(minimum, @"^v?(\d+(?:\.\d+){0,3})", RegexOptions.IgnoreCase);
+        if (!availableMatch.Success || !minimumMatch.Success ||
+            !Version.TryParse(availableMatch.Groups[1].Value, out var availableVersion) ||
+            !Version.TryParse(minimumMatch.Groups[1].Value, out var minimumVersion)) return false;
+        var comparison = availableVersion.CompareTo(minimumVersion);
+        return comparison > 0 || comparison == 0 && string.IsNullOrEmpty(availableMatch.Groups[2].Value);
+    }
 
     private static string? ParseDigest(string? digest) =>
         digest is not null && digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) && IsSha256(digest[7..]) ? digest[7..] : null;
@@ -400,6 +451,9 @@ public sealed class ManifestService
     private sealed class GitHubRelease
     {
         [JsonPropertyName("tag_name")] public string TagName { get; set; } = string.Empty;
+        [JsonPropertyName("prerelease")] public bool Prerelease { get; set; }
+        [JsonPropertyName("draft")] public bool Draft { get; set; }
+        [JsonPropertyName("published_at")] public DateTimeOffset? PublishedAt { get; set; }
         [JsonPropertyName("assets")] public List<GitHubAsset> Assets { get; set; } = [];
     }
 
