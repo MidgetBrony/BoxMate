@@ -8,7 +8,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Input.Platform;
 using Avalonia.Media;
-using Avalonia.Platform.Storage;
 using BoxMate.Models;
 using BoxMate.Services;
 
@@ -18,6 +17,7 @@ public partial class MainWindow : Window
 {
     private const string OfficialCatalogue = "https://api.github.com/repos/MidgetBrony/BoxMate-Mods/contents/manifest.json?ref=main";
     private const string BoxroomSteamUri = "steam://run/4335460";
+    private const string BoxroomModdingDiscordUri = "https://discord.gg/M2ebcaTEMe";
     private readonly SettingsService _settingsService = new();
     private readonly ManifestService _manifestService = new();
     private readonly InstallationService _installationService = new();
@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title = $"BoxMate v{SelfUpdateService.CurrentVersion}";
         Opened += MainWindow_OnOpened;
     }
 
@@ -50,8 +51,6 @@ public partial class MainWindow : Window
         }
         _gitHubToken = _gitHubAuthService.LoadToken();
         ApplyGitHubAuthentication();
-        GameFolderBox.Text = _settings.GameFolder;
-        UpdateSourceSummary();
         UpdateMelonLoaderStatus();
         UpdateGitHubStatus();
         LinuxSetupPanel.IsVisible = OperatingSystem.IsLinux();
@@ -63,16 +62,13 @@ public partial class MainWindow : Window
 
     private async void SettingsButton_OnClick(object? sender, RoutedEventArgs e)
     {
-        ReadSettingsFromForm();
         var dialog = new SettingsWindow(_settings, _packages);
         var updated = await dialog.ShowDialog<BoxMateSettings?>(this);
         if (updated is null) return;
         var refresh = !_settings.ManifestUrls.SequenceEqual(updated.ManifestUrls, StringComparer.OrdinalIgnoreCase) ||
             !ChannelsMatch(_settings.PackageChannels, updated.PackageChannels);
         _settings = updated;
-        GameFolderBox.Text = _settings.GameFolder;
         await _settingsService.SaveAsync(_settings);
-        UpdateSourceSummary();
         UpdateMelonLoaderStatus();
         RenderPackages();
         if (refresh) await RefreshManifestsAsync();
@@ -108,52 +104,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ManageSourcesButton_OnClick(object? sender, RoutedEventArgs e)
-    {
-        ReadSettingsFromForm();
-        var dialog = new ManifestSourcesWindow(_settings.ManifestUrls);
-        var sources = await dialog.ShowDialog<List<string>?>(this);
-        if (sources is null) return;
-        _settings.ManifestUrls = sources;
-        await _settingsService.SaveAsync(_settings);
-        UpdateSourceSummary();
-        await RefreshManifestsAsync();
-    }
-
-    private async void ChooseFolderButton_OnClick(object? sender, RoutedEventArgs e)
-    {
-        var choices = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = "Choose your BOXROOM folder", AllowMultiple = false
-        });
-        if (choices.Count > 0)
-        {
-            GameFolderBox.Text = choices[0].Path.LocalPath;
-            UpdateMelonLoaderStatus();
-            await SaveGameFolderAsync();
-        }
-    }
-
-    private async void GameFolderBox_OnLostFocus(object? sender, RoutedEventArgs e) =>
-        await SaveGameFolderAsync();
-
-    private async Task SaveGameFolderAsync()
-    {
-        ReadSettingsFromForm();
-        try
-        {
-            await _settingsService.SaveAsync(_settings);
-            RenderPackages();
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Could not save the BOXROOM folder: {ex.Message}");
-        }
-    }
-
     private void OpenModsFolderButton_OnClick(object? sender, RoutedEventArgs e)
     {
-        var gameRoot = GameFolderBox.Text?.Trim() ?? string.Empty;
+        var gameRoot = _settings.GameFolder.Trim();
         if (!ValidateGameFolder(gameRoot))
         {
             SetStatus("Choose a valid BOXROOM folder first.");
@@ -172,7 +125,7 @@ public partial class MainWindow : Window
 
     private void OpenLatestLogButton_OnClick(object? sender, RoutedEventArgs e)
     {
-        var gameRoot = GameFolderBox.Text?.Trim() ?? string.Empty;
+        var gameRoot = _settings.GameFolder.Trim();
         if (!ValidateGameFolder(gameRoot))
         {
             SetStatus("Choose a valid BOXROOM folder first.");
@@ -197,9 +150,18 @@ public partial class MainWindow : Window
     private static void OpenWithSystem(string path) =>
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
+    private void DiscordButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(BoxroomModdingDiscordUri) { UseShellExecute = true });
+            SetStatus("Opened the BOXROOM Modding Discord invite.");
+        }
+        catch (Exception ex) { SetStatus($"Could not open Discord: {ex.Message}"); }
+    }
+
     private async void InstallMelonLoaderButton_OnClick(object? sender, RoutedEventArgs e)
     {
-        ReadSettingsFromForm();
         if (!Directory.Exists(_settings.GameFolder) || !File.Exists(Path.Combine(_settings.GameFolder, "BOXROOM.exe")))
         {
             SetStatus("Choose the folder containing BOXROOM.exe first.");
@@ -264,7 +226,6 @@ public partial class MainWindow : Window
     private async void InstallButton_OnClick(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string packageId }) return;
-        ReadSettingsFromForm();
         var requested = _packages.FirstOrDefault(package => package.Manifest.Id.Equals(packageId, StringComparison.OrdinalIgnoreCase));
         if (requested is null) return;
         if (!InstallationService.IsTool(requested) && !ValidateGameFolder(_settings.GameFolder))
@@ -309,6 +270,19 @@ public partial class MainWindow : Window
         catch (Exception ex) { SetStatus($"Error: {ex.Message}"); }
     }
 
+    private void OpenReadmeButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string readmeUrl } ||
+            !Uri.TryCreate(readmeUrl, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            SetStatus("Opened the project README.");
+        }
+        catch (Exception ex) { SetStatus($"Could not open the project README: {ex.Message}"); }
+    }
+
     private async void UninstallButton_OnClick(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string packageId }) return;
@@ -317,7 +291,6 @@ public partial class MainWindow : Window
                 InstallationService.IsTool(package)
                     ? $"Remove {package.Manifest.Name}? Only files installed by BoxMate will be removed."
                     : $"Remove {package.Manifest.Name} from BOXROOM? Only files recorded by BoxMate will be removed.")) return;
-        ReadSettingsFromForm();
         await RunBusyAsync(async () =>
         {
             var removed = await _installationService.UninstallPackageAsync(_packages, packageId, _settings.GameFolder,
@@ -342,7 +315,6 @@ public partial class MainWindow : Window
 
     private async Task RefreshManifestsAsync()
     {
-        ReadSettingsFromForm();
         await RunBusyAsync(async () =>
         {
             var sources = new[] { OfficialCatalogue }.Concat(_settings.ManifestUrls);
@@ -394,8 +366,8 @@ public partial class MainWindow : Window
             UpdateBoxMateButton.IsVisible = _availableUpdate is not null;
             if (_availableUpdate is not null)
             {
-                UpdateBoxMateButton.Content = $"Update BoxMate · v{_availableUpdate.Version}";
-                ToolTip.SetTip(UpdateBoxMateButton, "Download, verify, install, and restart BoxMate");
+                ToolTip.SetTip(UpdateBoxMateButton,
+                    $"Update BoxMate to v{_availableUpdate.Version} — download, verify, install, and restart");
             }
         }
         catch (Exception ex)
@@ -437,25 +409,23 @@ public partial class MainWindow : Window
         finally { BusyProgress.IsVisible = false; RefreshButton.IsEnabled = true; }
     }
 
-    private void ReadSettingsFromForm()
-    {
-        _settings.GameFolder = GameFolderBox.Text?.Trim() ?? string.Empty;
-    }
-
-    private void UpdateSourceSummary()
-    {
-        SourceSummaryText.Text = _settings.ManifestUrls.Count switch
-        {
-            0 => "Official catalogue",
-            1 => "Official catalogue + 1 repository",
-            _ => $"Official catalogue + {_settings.ManifestUrls.Count} repositories"
-        };
-    }
-
     private void UpdateMelonLoaderStatus()
     {
-        var root = GameFolderBox.Text?.Trim() ?? string.Empty;
-        MelonLoaderStatusText.Text = _melonLoaderService.IsInstalled(root) ? "MelonLoader is installed" : "MelonLoader is not installed";
+        var root = _settings.GameFolder.Trim();
+        var validRoot = ValidateGameFolder(root);
+        var installed = _melonLoaderService.IsInstalled(root);
+        MelonLoaderIcon.Opacity = installed ? 1 : 0.28;
+        MelonLoaderStatusDot.Background = new SolidColorBrush(Color.Parse(installed ? "#70D6B2" : "#687386"));
+        OpenModsFolderButton.IsEnabled = validRoot;
+        OpenLatestLogButton.IsEnabled = validRoot && File.Exists(Path.Combine(root, "MelonLoader", "Latest.log"));
+        ToolTip.SetTip(MelonLoaderButton, installed
+            ? "MelonLoader is installed — click to update or reinstall"
+            : validRoot
+                ? "MelonLoader is not installed — click to install"
+                : "Choose your BOXROOM folder in Settings, then click to install MelonLoader");
+        ToolTip.SetTip(OpenLatestLogButton, OpenLatestLogButton.IsEnabled
+            ? "Open MelonLoader Latest.log"
+            : "Latest.log is not available yet");
     }
 
     private void ApplyGitHubAuthentication()
@@ -595,6 +565,8 @@ public sealed class PackageCard
     public IReadOnlyList<string> ChannelOptions => ReleaseChannels.Choices;
     public required string SelectedChannel { get; init; }
     public required string AvailableChannelLabel { get; init; }
+    public required string ReadmeUrl { get; init; }
+    public bool HasReadme => !string.IsNullOrWhiteSpace(ReadmeUrl);
 
     public static PackageCard From(ResolvedPackage package, bool subscribed, PackageInstallStatus status, string recordedVersion,
         IReadOnlyCollection<ResolvedPackage> allPackages, string selectedChannel)
@@ -633,6 +605,7 @@ public sealed class PackageCard
             ActionLabel = status == PackageInstallStatus.Current ? "Reinstall" : status == PackageInstallStatus.Outdated ? "Update" : status == PackageInstallStatus.Modified ? "Repair" : "Install",
             SelectedChannel = selectedChannel,
             AvailableChannelLabel = selectedChannel == package.ReleaseChannel ? string.Empty : $"Using {package.ReleaseChannel}",
+            ReadmeUrl = ResolveReadmeUrl(manifest.Repository),
             ShowChannelOption = !package.IsDeprecated,
             IsExperimental = manifest.Experimental,
             IsEarlyChannel = package.ReleaseChannel != "Stable",
@@ -646,6 +619,17 @@ public sealed class PackageCard
             CanLaunch = isTool && status is PackageInstallStatus.Current,
             IsTool = isTool
         };
+    }
+
+    private static string ResolveReadmeUrl(string repository)
+    {
+        var value = repository.Trim();
+        if (!value.Contains("://", StringComparison.Ordinal) &&
+            value.Split('/', StringSplitOptions.RemoveEmptyEntries).Length == 2)
+            value = $"https://github.com/{value}";
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)) return string.Empty;
+        return new UriBuilder(uri) { Fragment = "readme" }.Uri.AbsoluteUri;
     }
 
     private static string ResolveDependencyName(string manifestUrl, IReadOnlyCollection<ResolvedPackage> allPackages)

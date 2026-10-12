@@ -8,9 +8,11 @@ Package publishers can offer early builds as GitHub prereleases with version tag
 
 Add `OWNER/REPOSITORY` or a repository link for anything outside the catalogue, choose the BOXROOM folder for mods, refresh, and install. BoxMate finds `manifest.json` at the repository root on `main` or `master`; required repositories are discovered and installed automatically. Existing raw manifest links remain supported for compatibility.
 
-The BOXROOM setup panel can open the selected game's `Mods` folder or `MelonLoader/Latest.log` directly. The Mods folder is created when missing. `Latest.log` becomes available after BOXROOM has launched through MelonLoader at least once.
+The main-window header has compact shortcuts for the selected game's `Mods` folder and `MelonLoader/Latest.log`, with tooltips explaining each action. The Mods folder is created when missing. The log shortcut becomes available after BOXROOM has launched through MelonLoader at least once. Folder selection and repository management live in **Settings**, leaving the main window focused on the package catalogue.
 
-When a manifest requires MelonLoader and it is missing, BoxMate downloads the latest [official x64 archive from LavaGang](https://github.com/LavaGang/MelonLoader/releases/latest), verifies GitHub's SHA-256 digest, and installs it before the mod. This is also the correct archive for the Windows build of BOXROOM running through Wine/Proton. The setup panel has a separate **Install / update MelonLoader** button. BOXROOM must be closed during this operation.
+When a manifest requires MelonLoader and it is missing, BoxMate downloads the latest [official x64 archive from LavaGang](https://github.com/LavaGang/MelonLoader/releases/latest), verifies GitHub's SHA-256 digest, and installs it before the mod. This is also the correct archive for the Windows build of BOXROOM running through Wine/Proton. The MelonLoader header icon is muted when it is missing and highlighted when installed; click it to install or update MelonLoader. BOXROOM must be closed during this operation.
+
+Every package card with a valid project repository includes a **README** button for documentation, controls, and setup notes. The header also links to the BOXROOM Modding Discord community.
 
 ## Linux and Steam Deck
 
@@ -127,7 +129,7 @@ BoxMate still requires GitHub's SHA-256 digest (or a declared checksum asset), s
 
 ## BoxMate updates
 
-BoxMate checks its own latest GitHub release at startup. When a newer version is available, **Update BoxMate** appears in the header. The updater downloads the correct complete Windows or Linux runtime archive, verifies its SHA-256 checksum, stages the replacement outside the application folder, restarts through the staged copy, and relaunches the updated installation.
+BoxMate shows its current version in the native title bar and checks its latest GitHub release at startup. When a newer version is available, a download icon appears in the header's shortcut row with the target version in its tooltip. The updater downloads the correct complete Windows or Linux runtime archive, verifies its SHA-256 checksum, stages the replacement outside the application folder, restarts through the staged copy, and relaunches the updated installation.
 
 ## Collection manifests
 

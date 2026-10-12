@@ -13,76 +13,59 @@
 
   <Grid RowDefinitions="Auto,*,Auto">
     <Border Grid.Row="0" Background="#151A24" Padding="28,20">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto">
-        <StackPanel>
-          <TextBlock Text="BOXMATE" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
-          <TextBlock Text="Install BOXROOM mods and companion tools. BoxMate handles releases, updates, and requirements." Foreground="{StaticResource MutedBrush}" />
+      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+        <TextBlock Text="BOXMATE" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+        <TextBlock Grid.Row="1" Margin="0,2,20,0"
+                   Text="Install BOXROOM mods and companion tools. BoxMate handles releases, updates, and requirements."
+                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+          <Button Content="Launch BOXROOM" Padding="16,10" Click="LaunchBoxroomButton_OnClick" />
+          <Button Content="Settings" Padding="16,10" Click="SettingsButton_OnClick" />
+          <Button x:Name="RefreshButton" Content="Refresh mods" Padding="20,10" Click="RefreshButton_OnClick" />
         </StackPanel>
-        <Button Grid.Column="1" Content="Launch BOXROOM" Padding="16,10" Margin="0,0,10,0"
-                Click="LaunchBoxroomButton_OnClick" VerticalAlignment="Center" />
-        <Button Grid.Column="2" x:Name="UpdateBoxMateButton" IsVisible="False" Content="Update BoxMate"
-                Padding="16,10" Margin="0,0,10,0" Click="UpdateBoxMateButton_OnClick" VerticalAlignment="Center" />
-        <Button Grid.Column="3" x:Name="GitHubSignInButton" Width="42" Height="42" Padding="9" Margin="0,0,10,0"
-                Click="GitHubSignInButton_OnClick" VerticalAlignment="Center">
-          <Path x:Name="GitHubIconPath" Stretch="Uniform" Fill="#687386"
-                Data="M12,2 C6.48,2 2,6.58 2,12.22 C2,16.73 4.87,20.55 8.84,21.9 C9.34,22 9.52,21.68 9.52,21.41 L9.51,19.5 C6.73,20.12 6.14,18.29 6.14,18.29 C5.68,17.11 5.03,16.8 5.03,16.8 C4.12,16.16 5.1,16.17 5.1,16.17 C6.1,16.24 6.63,17.22 6.63,17.22 C7.52,18.78 8.97,18.33 9.54,18.07 C9.63,17.4 9.89,16.94 10.17,16.68 C7.95,16.42 5.62,15.55 5.62,11.64 C5.62,10.53 6,9.62 6.65,8.91 C6.55,8.65 6.22,7.62 6.75,6.22 C6.75,6.22 7.59,5.95 9.5,7.26 C10.3,7.03 11.15,6.91 12,6.91 C12.85,6.91 13.7,7.03 14.5,7.26 C16.41,5.95 17.25,6.22 17.25,6.22 C17.78,7.62 17.45,8.65 17.35,8.91 C18,9.62 18.38,10.53 18.38,11.64 C18.38,15.56 16.04,16.42 13.81,16.68 C14.17,17 14.49,17.63 14.49,18.59 L14.48,21.41 C14.48,21.68 14.66,22.01 15.17,21.9 C19.13,20.54 22,16.73 22,12.22 C22,6.58 17.52,2 12,2 Z" />
-        </Button>
-        <Button Grid.Column="4" Content="Settings" Padding="16,10" Margin="0,0,10,0"
-                Click="SettingsButton_OnClick" VerticalAlignment="Center" />
-        <Button Grid.Column="5" x:Name="RefreshButton" Content="Refresh mods" Padding="20,10"
-                Click="RefreshButton_OnClick" VerticalAlignment="Center" />
+        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="10"
+                    Margin="0,8,0,0" HorizontalAlignment="Right">
+          <Button x:Name="UpdateBoxMateButton" IsVisible="False" Width="42" Height="42" Padding="9"
+                  Click="UpdateBoxMateButton_OnClick">
+            <Path Stretch="Uniform" Fill="{StaticResource AccentBrush}"
+                  Data="M11,2 L13,2 L13,13 L17,9 L18.5,10.5 L12,17 L5.5,10.5 L7,9 L11,13 Z M4,19 L20,19 L20,22 L4,22 Z" />
+          </Button>
+          <Button x:Name="MelonLoaderButton" Width="42" Height="42" Padding="6"
+                  Click="InstallMelonLoaderButton_OnClick">
+            <Grid>
+              <Image x:Name="MelonLoaderIcon" Source="/Assets/MelonLoader.png" Stretch="Uniform" Opacity="0.28" />
+              <Border x:Name="MelonLoaderStatusDot" Width="9" Height="9" CornerRadius="5"
+                      Background="#687386" BorderBrush="#151A24" BorderThickness="2"
+                      HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+            </Grid>
+          </Button>
+          <Button x:Name="OpenModsFolderButton" Width="42" Height="42" Padding="9"
+                  ToolTip.Tip="Open BOXROOM Mods folder" Click="OpenModsFolderButton_OnClick">
+            <Path Stretch="Uniform" Fill="{StaticResource AccentBrush}"
+                  Data="M2,5 C2,3.9 2.9,3 4,3 L9,3 L11,5 L20,5 C21.1,5 22,5.9 22,7 L22,18 C22,19.1 21.1,20 20,20 L4,20 C2.9,20 2,19.1 2,18 Z" />
+          </Button>
+          <Button x:Name="OpenLatestLogButton" Width="42" Height="42" Padding="10"
+                  ToolTip.Tip="Open MelonLoader Latest.log" Click="OpenLatestLogButton_OnClick">
+            <Path Stretch="Uniform" Fill="{StaticResource AccentBrush}"
+                  Data="M5,2 L14,2 L20,8 L20,22 L5,22 Z M14,3 L14,8 L19,8 M8,12 L17,12 L17,14 L8,14 Z M8,16 L17,16 L17,18 L8,18 Z" />
+          </Button>
+          <Button Width="42" Height="42" Padding="9" ToolTip.Tip="Join the BOXROOM Modding Discord"
+                  Click="DiscordButton_OnClick">
+            <Path Stretch="Uniform" Fill="#8B93FF"
+                  Data="M19.5,5.3 C17.9,4.6 16.3,4.2 14.7,4 L14.1,5.2 C12.7,5 11.3,5 9.9,5.2 L9.3,4 C7.7,4.2 6.1,4.6 4.5,5.3 C1.7,9.4 1,13.4 1.4,17.3 C3.3,18.7 5.1,19.6 6.9,20.2 L8.2,18.4 C7.5,18.1 6.8,17.7 6.2,17.2 L6.7,16.8 C10.1,18.4 13.9,18.4 17.3,16.8 L17.8,17.2 C17.2,17.7 16.5,18.1 15.8,18.4 L17.1,20.2 C18.9,19.6 20.7,18.7 22.6,17.3 C23.1,12.8 21.8,8.8 19.5,5.3 M8.5,14.8 C7.5,14.8 6.7,13.9 6.7,12.8 C6.7,11.7 7.5,10.8 8.5,10.8 C9.5,10.8 10.3,11.7 10.3,12.8 C10.3,13.9 9.5,14.8 8.5,14.8 M15.5,14.8 C14.5,14.8 13.7,13.9 13.7,12.8 C13.7,11.7 14.5,10.8 15.5,10.8 C16.5,10.8 17.3,11.7 17.3,12.8 C17.3,13.9 16.5,14.8 15.5,14.8" />
+          </Button>
+          <Button x:Name="GitHubSignInButton" Width="42" Height="42" Padding="9"
+                  Click="GitHubSignInButton_OnClick">
+            <Path x:Name="GitHubIconPath" Stretch="Uniform" Fill="#687386"
+                  Data="M12,2 C6.48,2 2,6.58 2,12.22 C2,16.73 4.87,20.55 8.84,21.9 C9.34,22 9.52,21.68 9.52,21.41 L9.51,19.5 C6.73,20.12 6.14,18.29 6.14,18.29 C5.68,17.11 5.03,16.8 5.03,16.8 C4.12,16.16 5.1,16.17 5.1,16.17 C6.1,16.24 6.63,17.22 6.63,17.22 C7.52,18.78 8.97,18.33 9.54,18.07 C9.63,17.4 9.89,16.94 10.17,16.68 C7.95,16.42 5.62,15.55 5.62,11.64 C5.62,10.53 6,9.62 6.65,8.91 C6.55,8.65 6.22,7.62 6.75,6.22 C6.75,6.22 7.59,5.95 9.5,7.26 C10.3,7.03 11.15,6.91 12,6.91 C12.85,6.91 13.7,7.03 14.5,7.26 C16.41,5.95 17.25,6.22 17.25,6.22 C17.78,7.62 17.45,8.65 17.35,8.91 C18,9.62 18.38,10.53 18.38,11.64 C18.38,15.56 16.04,16.42 13.81,16.68 C14.17,17 14.49,17.63 14.49,18.59 L14.48,21.41 C14.48,21.68 14.66,22.01 15.17,21.9 C19.13,20.54 22,16.73 22,12.22 C22,6.58 17.52,2 12,2 Z" />
+          </Button>
+        </StackPanel>
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" Margin="24" ColumnDefinitions="320,16,*">
-      <Border Grid.Column="0" Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="20">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
-          <TextBlock Text="SETUP" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
-
-          <StackPanel Grid.Row="1" Margin="0,18,0,0">
-            <TextBlock Text="Mod sources" Foreground="{StaticResource MutedBrush}" />
-            <TextBlock x:Name="SourceSummaryText" Text="No repositories added" Margin="0,5,0,0" FontWeight="SemiBold" />
-            <Button Content="Manage repositories" HorizontalAlignment="Stretch" Margin="0,9,0,0"
-                    Click="ManageSourcesButton_OnClick" />
-          </StackPanel>
-
-          <StackPanel Grid.Row="2" Margin="0,18,0,0">
-            <TextBlock Text="BOXROOM folder" Foreground="{StaticResource MutedBrush}" />
-            <TextBox x:Name="GameFolderBox" Margin="0,6,0,0" PlaceholderText="Choose the folder containing BOXROOM.exe"
-                     LostFocus="GameFolderBox_OnLostFocus" />
-            <Button Content="Choose folder" HorizontalAlignment="Left" Margin="0,8,0,0" Click="ChooseFolderButton_OnClick" />
-            <Grid ColumnDefinitions="*,8,*" Margin="0,8,0,0">
-              <Button Grid.Column="0" Content="Open Mods Folder" HorizontalAlignment="Stretch"
-                      Click="OpenModsFolderButton_OnClick" />
-              <Button Grid.Column="2" Content="Open Latest.log" HorizontalAlignment="Stretch"
-                      Click="OpenLatestLogButton_OnClick" />
-            </Grid>
-          </StackPanel>
-
-          <Border Grid.Row="3" Background="{StaticResource SoftBrush}" CornerRadius="8" Padding="14" Margin="0,18,0,0">
-            <StackPanel>
-              <TextBlock x:Name="MelonLoaderStatusText" Text="MelonLoader status unknown" FontWeight="SemiBold" />
-              <Button Content="Install / update MelonLoader" Margin="0,8,0,0" HorizontalAlignment="Stretch"
-                      Click="InstallMelonLoaderButton_OnClick" />
-            </StackPanel>
-          </Border>
-
-          <Border x:Name="LinuxSetupPanel" Grid.Row="4" IsVisible="False" Background="{StaticResource SoftBrush}"
-                  CornerRadius="8" Padding="14" Margin="0,12,0,0">
-            <StackPanel>
-              <TextBlock Text="LINUX / STEAM DECK" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
-              <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
-                         Text="After installing MelonLoader, add its DLL override to BOXROOM's Steam launch options." />
-              <Button Content="Copy Proton launch option" Margin="0,8,0,0" HorizontalAlignment="Stretch"
-                      Click="CopyProtonLaunchOptionButton_OnClick" />
-            </StackPanel>
-          </Border>
-
-        </Grid>
-      </Border>
-
-      <Border Grid.Column="2" Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="20">
-        <Grid RowDefinitions="Auto,*">
+    <Grid Grid.Row="1" Margin="24">
+      <Border Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="20">
+        <Grid RowDefinitions="Auto,Auto,*">
           <Grid ColumnDefinitions="*,Auto">
             <StackPanel>
               <TextBlock Text="MODS &amp; TOOLS" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
@@ -91,7 +74,20 @@
             <ProgressBar x:Name="BusyProgress" Grid.Column="1" Width="150" IsIndeterminate="True" IsVisible="False" />
           </Grid>
 
-          <ScrollViewer Grid.Row="1" Margin="0,18,0,0">
+          <Border x:Name="LinuxSetupPanel" Grid.Row="1" IsVisible="False" Background="{StaticResource SoftBrush}"
+                  CornerRadius="8" Padding="14" Margin="0,14,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Text="LINUX / STEAM DECK" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                <TextBlock Margin="0,4,16,0" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                           Text="After installing MelonLoader, add its DLL override to BOXROOM's Steam launch options." />
+              </StackPanel>
+              <Button Grid.Column="1" Content="Copy Proton launch option" VerticalAlignment="Center"
+                      Click="CopyProtonLaunchOptionButton_OnClick" />
+            </Grid>
+          </Border>
+
+          <ScrollViewer Grid.Row="2" Margin="0,18,0,0">
             <ItemsControl x:Name="PackageList">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="local:PackageCard">
@@ -130,6 +126,9 @@
                                    Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="#E2B8FF" />
                       </StackPanel>
                       <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
+                        <Button Content="README" Tag="{Binding ReadmeUrl}" Padding="18,7"
+                                HorizontalAlignment="Stretch" ToolTip.Tip="Open this project's README"
+                                Click="OpenReadmeButton_OnClick" IsVisible="{Binding HasReadme}" />
                         <Button Content="Open" Tag="{Binding Id}" Padding="18,9"
                                 HorizontalAlignment="Stretch" Click="OpenToolButton_OnClick" IsVisible="{Binding CanLaunch}" />
                         <Button Content="{Binding ActionLabel}" Tag="{Binding Id}" Padding="18,9"
