@@ -71,7 +71,11 @@
               <TextBlock Text="MODS &amp; TOOLS" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
               <TextBlock x:Name="ManifestSummaryText" Text="Paste a raw manifest link to begin." Foreground="{StaticResource MutedBrush}" />
             </StackPanel>
-            <ProgressBar x:Name="BusyProgress" Grid.Column="1" Width="150" IsIndeterminate="True" IsVisible="False" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <Button x:Name="UpdateAllButton" Content="Update all" Padding="18,9" IsVisible="False"
+                      Click="UpdateAllButton_OnClick" />
+              <ProgressBar x:Name="BusyProgress" Width="150" IsIndeterminate="True" IsVisible="False" />
+            </StackPanel>
           </Grid>
 
           <Border x:Name="LinuxSetupPanel" Grid.Row="1" IsVisible="False" Background="{StaticResource SoftBrush}"

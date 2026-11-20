@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private BoxMateSettings _settings = new();
     private IReadOnlyList<ResolvedPackage> _packages = [];
     private bool _renderingPackages;
+    private bool _busy;
 
     public MainWindow()
     {
@@ -257,6 +258,56 @@ public partial class MainWindow : Window
         });
     }
 
+    private async void UpdateAllButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var updates = GetAvailableUpdates();
+        if (updates.Count == 0)
+        {
+            SetStatus("Everything is already current.");
+            RenderPackages();
+            return;
+        }
+
+        if (updates.Any(package => !InstallationService.IsTool(package)) &&
+            !ValidateGameFolder(_settings.GameFolder))
+        {
+            SetStatus("Choose a valid BOXROOM folder before updating mods.");
+            return;
+        }
+
+        await RunBusyAsync(async () =>
+        {
+            var modUpdates = updates.Where(package => !InstallationService.IsTool(package)).ToList();
+            var needsMelonLoader = modUpdates.Any(package =>
+                !string.IsNullOrWhiteSpace(package.Manifest.Requirements.MelonLoader));
+            if (needsMelonLoader && !_melonLoaderService.IsInstalled(_settings.GameFolder))
+            {
+                SetStatus("Installing required MelonLoader...");
+                await _melonLoaderService.InstallLatestAsync(_settings.GameFolder,
+                    message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+                UpdateMelonLoaderStatus();
+            }
+
+            var completed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var package in updates)
+            {
+                // An earlier package may have updated this one as a dependency.
+                if (_installationService.GetPackageStatus(package, _settings.GameFolder) != PackageInstallStatus.Outdated)
+                    continue;
+
+                var installed = await _installationService.InstallPackageAsync(
+                    _packages, package.Manifest.Id, _settings.GameFolder,
+                    message => Avalonia.Threading.Dispatcher.UIThread.Post(() => SetStatus(message)));
+                foreach (var name in installed) completed.Add(name);
+            }
+
+            SetStatus(completed.Count == 0
+                ? "Everything is already current."
+                : $"Updated {string.Join(", ", completed.OrderBy(name => name))}.");
+            RenderPackages();
+        });
+    }
+
     private void OpenToolButton_OnClick(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string packageId }) return;
@@ -397,16 +448,39 @@ public partial class MainWindow : Window
         _renderingPackages = false;
         var toolCount = cards.Count(card => card.IsTool);
         var modCount = cards.Count - toolCount;
-        ManifestSummaryText.Text = $"{modCount} mod{(modCount == 1 ? string.Empty : "s")} · {toolCount} tool{(toolCount == 1 ? string.Empty : "s")}";
+        var updateCount = GetAvailableUpdates().Count;
+        ManifestSummaryText.Text = $"{modCount} mod{(modCount == 1 ? string.Empty : "s")} · {toolCount} tool{(toolCount == 1 ? string.Empty : "s")}" +
+            (updateCount == 0 ? string.Empty : $" · {updateCount} update{(updateCount == 1 ? string.Empty : "s")} available");
+        UpdateAllButton.Content = updateCount == 1 ? "Update 1 package" : $"Update all {updateCount}";
+        UpdateAllButton.IsVisible = updateCount > 0;
+        UpdateAllButton.IsEnabled = updateCount > 0 && !_busy;
+    }
+
+    private List<ResolvedPackage> GetAvailableUpdates()
+    {
+        var validRoot = ValidateGameFolder(_settings.GameFolder);
+        return _packages.Where(package =>
+                !package.IsDeprecated &&
+                (InstallationService.IsTool(package) || validRoot) &&
+                _installationService.GetPackageStatus(package, _settings.GameFolder) == PackageInstallStatus.Outdated)
+            .ToList();
     }
 
     private async Task RunBusyAsync(Func<Task> work)
     {
+        _busy = true;
         BusyProgress.IsVisible = true;
         RefreshButton.IsEnabled = false;
+        UpdateAllButton.IsEnabled = false;
         try { await work(); }
         catch (Exception ex) { SetStatus($"Error: {ex.Message}"); }
-        finally { BusyProgress.IsVisible = false; RefreshButton.IsEnabled = true; }
+        finally
+        {
+            _busy = false;
+            BusyProgress.IsVisible = false;
+            RefreshButton.IsEnabled = true;
+            UpdateAllButton.IsEnabled = GetAvailableUpdates().Count > 0;
+        }
     }
 
     private void UpdateMelonLoaderStatus()
@@ -495,6 +569,7 @@ public partial class MainWindow : Window
             return StatusSeverity.Warning;
 
         if (message.StartsWith("Installed ", StringComparison.OrdinalIgnoreCase) ||
+            message.StartsWith("Updated ", StringComparison.OrdinalIgnoreCase) ||
             message.StartsWith("Reinstalled ", StringComparison.OrdinalIgnoreCase) ||
             message.StartsWith("Uninstalled ", StringComparison.OrdinalIgnoreCase) ||
             message.StartsWith("Opened ", StringComparison.OrdinalIgnoreCase) ||
